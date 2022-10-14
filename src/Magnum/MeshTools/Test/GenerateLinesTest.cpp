@@ -3,7 +3,6 @@
 
     Copyright © 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019,
                 2020, 2021, 2022 Vladimír Vondruš <mosra@centrum.cz>
-    Copyright © 2020 Jonathan Hale <squareys@googlemail.com>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -24,26 +23,17 @@
     DEALINGS IN THE SOFTWARE.
 */
 
-/* Kept consistent with GenericGL.h (tested in ShadersGenericGL_Test) */
+#include <Corrade/TestSuite/Tester.h>
 
-#define POSITION_ATTRIBUTE_LOCATION 0
-#define TEXTURECOORDINATES_ATTRIBUTE_LOCATION 1
-#define COLOR_ATTRIBUTE_LOCATION 2
-#define TANGENT_ATTRIBUTE_LOCATION 3 /* also LinePreviousPosition */
-#define LINE_PREVIOUS_POSITION_ATTRIBUTE_LOCATION 3 /* also Tangent */
-#define BITANGENT_ATTRIBUTE_LOCATION 4 /* also ObjectId */
-#define OBJECT_ID_ATTRIBUTE_LOCATION 4 /* also Bitangent */
-#define NORMAL_ATTRIBUTE_LOCATION 5 /* also LineNextPosition */
-#define LINE_NEXT_POSITION_ATTRIBUTE_LOCATION 5 /* also Normal */
-#define JOINTIDS_ATTRIBUTE_LOCATION 6
-#define WEIGHTS_ATTRIBUTE_LOCATION 7
+namespace Magnum { namespace MeshTools { namespace Test { namespace {
 
-#define TRANSFORMATION_MATRIX_ATTRIBUTE_LOCATION 8
-#define SECONDARY_JOINTIDS_ATTRIBUTE_LOCATION 10 /* also TransformationMatrix[2] */
-#define SECONDARY_WEIGHTS_ATTRIBUTE_LOCATION 11 /* also TransformationMatrix[3] */
-#define NORMAL_MATRIX_ATTRIBUTE_LOCATION 12
-#define TEXTURE_OFFSET_ATTRIBUTE_LOCATION 15 /* + layer in the 3rd component */
+struct GenerateLinesTest: TestSuite::Tester {
+    explicit GenerateLinesTest();
+};
 
-/* Outputs */
-#define COLOR_OUTPUT_ATTRIBUTE_LOCATION 0
-#define OBJECT_ID_OUTPUT_ATTRIBUTE_LOCATION 1
+GenerateLinesTest::GenerateLinesTest() {
+}
+
+}}}}
+
+CORRADE_TEST_MAIN(Magnum::MeshTools::Test::GenerateLinesTest)
