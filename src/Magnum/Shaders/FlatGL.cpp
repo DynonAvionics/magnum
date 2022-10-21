@@ -211,7 +211,9 @@ template<UnsignedInt dimensions> typename FlatGL<dimensions>::CompileState FlatG
     }
     #endif
     vert.addSource(rs.getString("generic.glsl"))
-        .addSource(rs.getString("Flat.vert"));
+        .addSource(rs.getString("Flat.vert"))
+        .submitCompile();
+
     frag.addSource(configuration.flags() & Flag::Textured ? "#define TEXTURED\n" : "")
         #ifndef MAGNUM_TARGET_GLES2
         .addSource(configuration.flags() & Flag::TextureArrays ? "#define TEXTURE_ARRAYS\n" : "")
@@ -236,10 +238,8 @@ template<UnsignedInt dimensions> typename FlatGL<dimensions>::CompileState FlatG
     }
     #endif
     frag.addSource(rs.getString("generic.glsl"))
-        .addSource(rs.getString("Flat.frag"));
-
-    vert.submitCompile();
-    frag.submitCompile();
+        .addSource(rs.getString("Flat.frag"))
+        .submitCompile();
 
     out.attachShaders({vert, frag});
 
