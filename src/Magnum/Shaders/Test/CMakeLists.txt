@@ -41,7 +41,7 @@ corrade_add_test(ShadersDistanceFieldVectorGL_Test DistanceFieldVectorGL_Test.cp
 corrade_add_test(ShadersFlatGL_Test FlatGL_Test.cpp LIBRARIES MagnumShaders)
 corrade_add_test(ShadersGenericGL_Test GenericGL_Test.cpp LIBRARIES MagnumShaders)
 corrade_add_test(ShadersMeshVisualizerGL_Test MeshVisualizerGL_Test.cpp LIBRARIES MagnumShaders)
-corrade_add_test(ShadersPhongGL_Test PhongGL_Test.cpp LIBRARIES MagnumShaders)
+corrade_add_test(ShadersPhongGL_Test PhongGL_Test.cpp LIBRARIES MagnumShadersTestLib)
 corrade_add_test(ShadersVectorGL_Test VectorGL_Test.cpp LIBRARIES MagnumShaders)
 corrade_add_test(ShadersVertexColorGL_Test VertexColorGL_Test.cpp LIBRARIES MagnumShaders)
 
@@ -284,6 +284,10 @@ if(MAGNUM_BUILD_GL_TESTS)
             TestFiles/normal-texture.tga
             TestFiles/specular-texture.tga
             TestFiles/alpha-mask1.0.tga
+            TestFiles/skinning.tga
+            TestFiles/skinning-default.tga
+            TestFiles/skinning-instanced.tga
+            TestFiles/skinning-multi.tga
 
             PhongTestFiles/colored.tga
             PhongTestFiles/defaults.tga
