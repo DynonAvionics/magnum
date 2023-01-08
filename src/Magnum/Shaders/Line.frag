@@ -57,7 +57,7 @@ uniform mediump float smoothness
     ;
 
 #ifdef EXPLICIT_UNIFORM_LOCATION
-layout(location = 4)
+layout(location = 5)
 #endif
 uniform lowp vec4 backgroundColor
     #ifndef GL_ES
@@ -67,7 +67,7 @@ uniform lowp vec4 backgroundColor
 
 #ifndef UNIFORM_BUFFERS
 #ifdef EXPLICIT_UNIFORM_LOCATION
-layout(location = 5)
+layout(location = 6)
 #endif
 uniform lowp vec4 color
     #ifndef GL_ES
@@ -77,7 +77,7 @@ uniform lowp vec4 color
 
 #ifdef OBJECT_ID
 #ifdef EXPLICIT_UNIFORM_LOCATION
-layout(location = 6)
+layout(location = 7)
 #endif
 /* mediump is just 2^10, which might not be enough, this is 2^16 */
 uniform highp uint objectId; /* defaults to zero */
@@ -89,7 +89,7 @@ uniform highp uint objectId; /* defaults to zero */
 #ifndef MULTI_DRAW
 #if DRAW_COUNT > 1
 #ifdef EXPLICIT_UNIFORM_LOCATION
-layout(location = 0)
+layout(location = 1)
 #endif
 uniform highp uint drawOffset
     #ifndef GL_ES
@@ -176,34 +176,45 @@ void main() {
     lowp const vec4 color = materials[materialId].color;
     #endif
 
-    // TODO this comment is plain wrong
-    /* Pixels with `abs(centerDistanceSigned) <= [d+w,w]` are foreground,
-       pixels with `abs(centerDistanceSigned) > [d+w+s,w+s]` are background,
-       smoothstep in between */
-    highp const vec2 edge = vec2(halfSegmentLength+0.5*width, width*0.5);
+//     // TODO this comment is plain wrong; also the whole edge thing is not used for anything!!
+//     /* Pixels with `abs(centerDistanceSigned) <= [d+w,w]` are foreground,
+//        pixels with `abs(centerDistanceSigned) > [d+w+s,w+s]` are background,
+//        smoothstep in between */
+//     highp const vec2 edge = vec2(halfSegmentLength
+//         #if defined(CAP_STYLE_SQUARE) || defined(CAP_STYLE_ROUND) || defined(CAP_STYLE_TRIANGLE)
+//         + 0.5*width
+//         #elif !defined(CAP_STYLE_BUTT)
+//         #error
+//         #endif
+//         , width*0.5);
 
     // TODO better names ffs
-    highp vec2 distance_ = vec2(max(abs(centerDistanceSigned.x) - halfSegmentLength, 0.0), abs(centerDistanceSigned.y));
+    highp vec2 distance_ = vec2(max(abs(centerDistanceSigned.x)
+        #ifdef CAP_STYLE_BUTT
+        + width*0.5  // TODO wut, clean up
+        #endif
+        - halfSegmentLength, 0.0), abs(centerDistanceSigned.y));
     // TODO document what is this
     if(hasCap < 0.0) distance_.x = 0.0;
 
-    #ifdef CAP_STYLE_SQUARE
-    const highp float distanceS = max(distance_.x, distance_.y);
+    #if defined(CAP_STYLE_BUTT) || defined(CAP_STYLE_SQUARE)
+    highp const float distanceS = max(distance_.x, distance_.y);
     #elif defined(CAP_STYLE_ROUND)
-    const highp float distanceS = length(distance_);
+    highp const float distanceS = length(distance_);
     #elif defined(CAP_STYLE_TRIANGLE)
-    const highp float distanceS = distance_.x + distance_.y;
+    highp const float distanceS = distance_.x + distance_.y;
     #else
     #error
     #endif
 
+    // TODO clean this up so it doesn't include width (which isn't present for butts)
     const highp float factor = smoothstep(width*0.5 - smoothness, width*0.5 + smoothness, distanceS);
 
-    #if 1
-    const highp float factorX = distance(abs(centerDistanceSigned), vec2(halfSegmentLength, 0.0));
-    #else
-    const highp float factorX = factor.x;
-    #endif
+//     #if 1 // TODO wat???
+//     const highp float factorX = distance(abs(centerDistanceSigned), vec2(halfSegmentLength, 0.0));
+//     #else
+//     const highp float factorX = factor.x;
+//     #endif
 
     fragmentColor = mix(
         #ifdef VERTEX_COLOR
@@ -212,11 +223,12 @@ void main() {
         color, backgroundColor, factor);
 
     #ifdef OBJECT_ID
-    // TODO how to handle smoothness here?
-    fragmentObjectId = all(lessThan(abs(centerDistanceSigned), edge)) ?
-        #ifdef INSTANCED_OBJECT_ID
-        interpolatedInstanceObjectId +
-        #endif
-        objectId : 0u;
+//     // TODO how to handle smoothness here? or just put objectID to the whole area? makes more sense that way, than having small bits of 0 at random places
+//     fragmentObjectId = all(lessThan(abs(centerDistanceSigned), edge)) ?
+//         #ifdef INSTANCED_OBJECT_ID
+//         interpolatedInstanceObjectId +
+//         #endif
+//         objectId : 0u;
+    fragmentObjectId = objectId;
     #endif
 }

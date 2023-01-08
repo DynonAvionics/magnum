@@ -47,6 +47,9 @@ struct LineGL_Test: TestSuite::Tester {
     void debugFlag();
     void debugFlags();
     void debugFlagsSupersets();
+
+    void debugCapStyle();
+    void debugJoinStyle();
 };
 
 LineGL_Test::LineGL_Test() {
@@ -62,7 +65,10 @@ LineGL_Test::LineGL_Test() {
 
               &LineGL_Test::debugFlag,
               &LineGL_Test::debugFlags,
-              &LineGL_Test::debugFlagsSupersets});
+              &LineGL_Test::debugFlagsSupersets,
+
+              &LineGL_Test::debugCapStyle,
+              &LineGL_Test::debugJoinStyle});
 }
 
 template<UnsignedInt dimensions> void LineGL_Test::constructConfigurationDefault() {
@@ -114,14 +120,12 @@ template<UnsignedInt dimensions> void LineGL_Test::constructCopy() {
 
 void LineGL_Test::debugFlag() {
     std::ostringstream out;
-
     Debug{&out} << LineGL3D::Flag::VertexColor << LineGL3D::Flag(0xf00d);
     CORRADE_COMPARE(out.str(), "Shaders::LineGL::Flag::VertexColor Shaders::LineGL::Flag(0xf00d)\n");
 }
 
 void LineGL_Test::debugFlags() {
     std::ostringstream out;
-
     Debug{&out} << (LineGL3D::Flag::VertexColor|LineGL3D::Flag::InstancedTransformation) << LineGL3D::Flags{};
     CORRADE_COMPARE(out.str(), "Shaders::LineGL::Flag::VertexColor|Shaders::LineGL::Flag::InstancedTransformation Shaders::LineGL::Flags{}\n");
 }
@@ -145,6 +149,18 @@ void LineGL_Test::debugFlagsSupersets() {
         CORRADE_COMPARE(out.str(), "Shaders::LineGL::Flag::MultiDraw\n");
     }
     #endif
+}
+
+void LineGL_Test::debugCapStyle() {
+    std::ostringstream out;
+    Debug{&out} << LineGL3D::CapStyle::Square << LineGL3D::CapStyle(0xb0);
+    CORRADE_COMPARE(out.str(), "Shaders::LineGL::CapStyle::Square Shaders::LineGL::CapStyle(0xb0)\n");
+}
+
+void LineGL_Test::debugJoinStyle() {
+    std::ostringstream out;
+    Debug{&out} << LineGL3D::JoinStyle::Round << LineGL3D::JoinStyle(0xb0);
+    CORRADE_COMPARE(out.str(), "Shaders::LineGL::JoinStyle::Round Shaders::LineGL::JoinStyle(0xb0)\n");
 }
 
 }}}}

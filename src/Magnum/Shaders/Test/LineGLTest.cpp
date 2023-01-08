@@ -79,6 +79,7 @@ struct LineGLTest: GL::OpenGLTester {
     template<UnsignedInt dimensions> void setUniformUniformBuffersEnabled();
     template<UnsignedInt dimensions> void bindBufferUniformBuffersNotEnabled();
     #endif
+    template<UnsignedInt dimensions> void setMiterLimitNotMiter();
     #ifndef MAGNUM_TARGET_GLES2
     template<UnsignedInt dimensions> void setObjectIdNotEnabled();
     #endif
@@ -130,6 +131,7 @@ using namespace Math::Literals;
 const struct {
     const char* name;
     LineGL2D::Flags flags;
+    // TODO cap/join style
 } ConstructData[]{
     {"", {}},
     {"vertex colors", LineGL2D::Flag::VertexColor},
@@ -144,6 +146,7 @@ const struct {
 const struct {
     const char* name;
     LineGL2D::Flags flags;
+    // TODO cap/join style
     UnsignedInt materialCount, drawCount;
 } ConstructUniformBuffersData[]{
     {"classic fallback", {}, 1, 1},
@@ -183,7 +186,8 @@ const struct {
     Containers::Array<Vector2> lineSegments;
     Float width;
     Float smoothness;
-    LineGL2D::CapStyle capStyle;
+    Containers::Optional<LineGL2D::CapStyle> capStyle;
+    // TODO join style
     bool reverse;
     Matrix3 transform;
     bool expectOverlap;
@@ -197,6 +201,14 @@ const struct {
         {-0.8f, -0.8f}, { 0.8f, -0.8f},
     }}, 10.0f, 0.0f, {}, false, {},
         false, "line-caps-square-flat.tga"},
+    {"line caps butt", {InPlaceInit, {
+        {-0.8f,  0.8f}, {-0.8f,  0.8f},
+        {-0.8f,  0.4f}, {-0.4f,  0.4f},
+        {-0.8f,  0.0f}, { 0.0f,  0.0f},
+        {-0.8f, -0.4f}, { 0.4f, -0.4f},
+        {-0.8f, -0.8f}, { 0.8f, -0.8f},
+    }}, 10.0f, 1.0f, LineGL2D::CapStyle::Butt, false, {},
+        false, "line-caps-butt.tga"},
     {"line caps square", {InPlaceInit, {
         {-0.8f,  0.8f}, {-0.8f,  0.8f},
         {-0.8f,  0.4f}, {-0.4f,  0.4f},
@@ -387,6 +399,8 @@ LineGLTest::LineGLTest() {
         // &LineGLTest::setUniformUniformBuffersEnabled<3>,
         &LineGLTest::bindBufferUniformBuffersNotEnabled<2>,
         // &LineGLTest::bindBufferUniformBuffersNotEnabled<3>,
+        &LineGLTest::setMiterLimitNotMiter<2>,
+        // &LineGLTest::setMiterLimitNotMiter<3>,
         &LineGLTest::setObjectIdNotEnabled<2>,
         // &LineGLTest::setObjectIdNotEnabled<3>,
         // &LineGLTest::setWrongDrawOffset<2>,
@@ -449,7 +463,7 @@ template<UnsignedInt dimensions> void LineGLTest::construct() {
         #if defined(CORRADE_TARGET_APPLE) && !defined(MAGNUM_TARGET_GLES)
         CORRADE_EXPECT_FAIL("macOS drivers need insane amount of state to validate properly.");
         #endif
-        CORRADE_VERIFY(shader.validate().first);
+        CORRADE_VERIFY(shader.validate().first());
     }
 
     MAGNUM_VERIFY_NO_GL_ERROR();
@@ -473,7 +487,7 @@ template<UnsignedInt dimensions> void LineGLTest::constructAsync() {
         #if defined(CORRADE_TARGET_APPLE) && !defined(MAGNUM_TARGET_GLES)
         CORRADE_EXPECT_FAIL("macOS drivers need insane amount of state to validate properly.");
         #endif
-        CORRADE_VERIFY(shader.validate().first);
+        CORRADE_VERIFY(shader.validate().first());
     }
 
     MAGNUM_VERIFY_NO_GL_ERROR();
@@ -677,6 +691,7 @@ template<UnsignedInt dimensions> void LineGLTest::setUniformUniformBuffersEnable
     shader.setTransformationProjectionMatrix({})
         .setWidth({})
         .setSmoothness({})
+        .setMiterLimit({})
         .setBackgroundColor({})
         .setColor({})
         .setObjectId({});
@@ -684,6 +699,7 @@ template<UnsignedInt dimensions> void LineGLTest::setUniformUniformBuffersEnable
         "Shaders::LineGL::setTransformationProjectionMatrix(): the shader was created with uniform buffers enabled\n"
         "Shaders::LineGL::setWidth(): the shader was created with uniform buffers enabled\n"
         "Shaders::LineGL::setSmoothness(): the shader was created with uniform buffers enabled\n"
+        "Shaders::LineGL::setMiterLimit(): the shader was created with uniform buffers enabled\n"
         "Shaders::LineGL::setBackgroundColor(): the shader was created with uniform buffers enabled\n"
         "Shaders::LineGL::setColor(): the shader was created with uniform buffers enabled\n"
         "Shaders::LineGL::setObjectId(): the shader was created with uniform buffers enabled\n");
@@ -694,11 +710,11 @@ template<UnsignedInt dimensions> void LineGLTest::bindBufferUniformBuffersNotEna
 
     CORRADE_SKIP_IF_NO_ASSERT();
 
-    std::ostringstream out;
-    Error redirectError{&out};
-
     GL::Buffer buffer;
     LineGL<dimensions> shader;
+
+    std::ostringstream out;
+    Error redirectError{&out};
     shader.bindTransformationProjectionBuffer(buffer)
           .bindTransformationProjectionBuffer(buffer, 0, 16)
           .bindDrawBuffer(buffer)
@@ -716,6 +732,23 @@ template<UnsignedInt dimensions> void LineGLTest::bindBufferUniformBuffersNotEna
         "Shaders::LineGL::setDrawOffset(): the shader was not created with uniform buffers enabled\n");
 }
 #endif
+
+template<UnsignedInt dimensions> void LineGLTest::setMiterLimitNotMiter() {
+    setTestCaseTemplateName(Utility::format("{}", dimensions));
+
+    CORRADE_SKIP_IF_NO_ASSERT();
+
+    GL::Buffer buffer;
+    LineGL<dimensions> shader{typename LineGL<dimensions>::Configuration{}
+        .setJoinStyle(LineGL<dimensions>::JoinStyle::Round)
+    };
+
+    std::ostringstream out;
+    Error redirectError{&out};
+    shader.setMiterLimit({});
+    CORRADE_COMPARE(out.str(),
+        "Shaders::LineGL::setMiterLimit(): the shader was created with Shaders::LineGL::JoinStyle::Round\n");
+}
 
 #ifndef MAGNUM_TARGET_GLES2
 template<UnsignedInt dimensions> void LineGLTest::setObjectIdNotEnabled() {
@@ -784,58 +817,68 @@ void LineGLTest::renderTeardown() {
     _color = GL::Renderbuffer{NoCreate};
 }
 
+// TODO this belongs to MeshTools
 template<UnsignedInt dimensions> GL::Mesh generateLineMesh(Containers::StridedArrayView1D<const VectorTypeFor<dimensions, Float>> lineSegments) {
     struct Vertex {
         VectorTypeFor<dimensions, Float> previousPosition;
-        VectorTypeFor<dimensions, Float> position;
+        VectorTypeFor<dimensions + 1, Float> position;
         VectorTypeFor<dimensions, Float> nextPosition;
+    };
+
+    enum: Int {
+        LineBegin = 1,
+        LineEnd = 2,
+        LineCap = 4
     };
 
     CORRADE_INTERNAL_ASSERT(lineSegments.size() % 2 == 0);
     /* Not NoInit, because we're subsequently checking for NaNs */
     Containers::Array<Vertex> vertices{ValueInit, lineSegments.size()*2};
-    for(std::size_t i = 0; i != lineSegments.size(); ++i)
-        vertices[i*2 + 0].position = vertices[i*2 + 1].position = lineSegments[i];
+    for(std::size_t i = 0; i != lineSegments.size(); ++i) {
+        vertices[i*2 + 0].position = {lineSegments[i], Float((i % 2 ? LineEnd : LineBegin))};
+        vertices[i*2 + 1].position = {lineSegments[i], -Float((i % 2 ? LineEnd : LineBegin))};
+    }
 
-    /* Mark prev/next positions with NaN if it's the beginning, the end or the
-       segments are disjoint */
-    vertices[0].previousPosition =
-        vertices[1].previousPosition =
-            vertices[vertices.size() - 2].nextPosition =
-                vertices[vertices.size() - 1].nextPosition =
-                    VectorTypeFor<dimensions, Float>{Constants::nan()};
+    /* Mark caps if it's the beginning, the end or the segments are disjoint */
+    for(std::size_t i: {std::size_t{0}, std::size_t{1}, vertices.size() - 2, vertices.size() - 1}) {
+        vertices[i].position[dimensions] =
+            Math::sign(vertices[i].position[dimensions])*Float(Int(Math::abs(vertices[i].position[dimensions]))|LineCap);
+    }
     for(std::size_t i = 4; i < vertices.size(); i += 4) {
-        if(vertices[i - 2].position == vertices[i].position) continue;
-        vertices[i - 2].nextPosition =
-            vertices[i - 1].nextPosition =
-                vertices[i + 0].previousPosition =
-                    vertices[i + 1].previousPosition =
-                        VectorTypeFor<dimensions, Float>{Constants::nan()};
+        /* Compare everything except the last component, which is always
+           different */
+        if(VectorTypeFor<dimensions, Float>::pad(vertices[i - 2].position) ==
+           VectorTypeFor<dimensions, Float>::pad(vertices[i].position))
+            continue;
+        for(std::size_t j: {i - 2, i - 1, i + 0, i + 1}) {
+            vertices[j].position[dimensions] =
+                Math::sign(vertices[j].position[dimensions])*Float(Int(Math::abs(vertices[j].position[dimensions]))|LineCap);
+        }
     }
 
-    /* Prev positions for first vertices */
+    /* Prev positions for segment last vertices -- the other segment point */
     for(std::size_t i = 2; i < Containers::arraySize(vertices); i += 4) {
-        if(Math::isNan(vertices[i].previousPosition)) continue;
         vertices[i + 0].previousPosition = vertices[i + 1].previousPosition =
-            vertices[i - 2].position;
+            VectorTypeFor<dimensions, Float>::pad(vertices[i - 2].position);
     }
-    /* Prev positions for last vertices */
+    /* Prev positions for segment first vertices -- a neighbor segment, if any */
     for(std::size_t i = 4; i < Containers::arraySize(vertices); i += 4) {
-        if(Math::isNan(vertices[i].previousPosition)) continue;
+        if(Int(Math::abs(vertices[i].position[dimensions])) & LineCap)
+            continue;
         vertices[i + 0].previousPosition = vertices[i + 1].previousPosition =
-            vertices[i - 4].position;
+            VectorTypeFor<dimensions, Float>::pad(vertices[i - 4].position);
     }
-    /* Next positions for first vertices */
+    /* Next positions for segment first vertices -- the other segment point */
     for(std::size_t i = 0; i < Containers::arraySize(vertices) - 2; i += 4) {
-        if(Math::isNan(vertices[i].nextPosition)) continue;
         vertices[i + 0].nextPosition = vertices[i + 1].nextPosition =
-            vertices[i + 2].position;
+            VectorTypeFor<dimensions, Float>::pad(vertices[i + 2].position);
     }
-    /* Next positions for last vertices */
+    /* Next positions for last vertices -- a neighbor segment, if any */
     for(std::size_t i = 2; i < Containers::arraySize(vertices) - 4; i += 4) {
-        if(Math::isNan(vertices[i].nextPosition)) continue;
+        if(Int(Math::abs(vertices[i].position[dimensions])) & LineCap)
+            continue;
         vertices[i + 0].nextPosition = vertices[i + 1].nextPosition =
-            vertices[i + 4].position;
+            VectorTypeFor<dimensions, Float>::pad(vertices[i + 4].position);
     }
 
     Containers::Array<UnsignedInt> indices{NoInit, lineSegments.size()*6/2};
@@ -847,6 +890,10 @@ template<UnsignedInt dimensions> GL::Mesh generateLineMesh(Containers::StridedAr
         indices[i*6 + 4] = i*4 + 1;
         indices[i*6 + 5] = i*4 + 3;
     }
+
+    // for(auto& i: vertices) {
+    //     Debug{} << "pos" << i.position << "prev" << i.previousPosition << "next" << i.nextPosition;
+    // }
 
     GL::Mesh mesh;
     mesh.addVertexBuffer(GL::Buffer{vertices}, 0,
@@ -964,9 +1011,10 @@ template<LineGL2D::Flag flag> void LineGLTest::render2D() {
     GL::Mesh lines = generateLineMesh<2>(
         data.reverse ? stridedArrayView(transformedLineSegments).flipped<0>() : transformedLineSegments);
 
-    LineGL2D shader{LineGL2D::Configuration{}
-        .setFlags(flag)
-        .setCapStyle(data.capStyle)};
+    LineGL2D::Configuration configuration;
+    configuration.setFlags(flag);
+    if(data.capStyle) configuration.setCapStyle(*data.capStyle);
+    LineGL2D shader{configuration};
     shader.setViewportSize(Vector2{RenderSize});
     shader
         .setWidth(data.width)
