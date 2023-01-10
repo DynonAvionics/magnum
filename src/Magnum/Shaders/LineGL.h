@@ -63,8 +63,7 @@ namespace Implementation {
     };
     enum class LineGLJoinStyle: UnsignedByte {
         Miter,
-        Bevel,
-        Round
+        Bevel
     };
 }
 

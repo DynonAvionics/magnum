@@ -159,8 +159,8 @@ void LineGL_Test::debugCapStyle() {
 
 void LineGL_Test::debugJoinStyle() {
     std::ostringstream out;
-    Debug{&out} << LineGL3D::JoinStyle::Round << LineGL3D::JoinStyle(0xb0);
-    CORRADE_COMPARE(out.str(), "Shaders::LineGL::JoinStyle::Round Shaders::LineGL::JoinStyle(0xb0)\n");
+    Debug{&out} << LineGL3D::JoinStyle::Bevel << LineGL3D::JoinStyle(0xb0);
+    CORRADE_COMPARE(out.str(), "Shaders::LineGL::JoinStyle::Bevel Shaders::LineGL::JoinStyle(0xb0)\n");
 }
 
 }}}}

@@ -740,14 +740,14 @@ template<UnsignedInt dimensions> void LineGLTest::setMiterLimitNotMiter() {
 
     GL::Buffer buffer;
     LineGL<dimensions> shader{typename LineGL<dimensions>::Configuration{}
-        .setJoinStyle(LineGL<dimensions>::JoinStyle::Round)
+        .setJoinStyle(LineGL<dimensions>::JoinStyle::Bevel)
     };
 
     std::ostringstream out;
     Error redirectError{&out};
     shader.setMiterLimit({});
     CORRADE_COMPARE(out.str(),
-        "Shaders::LineGL::setMiterLimit(): the shader was created with Shaders::LineGL::JoinStyle::Round\n");
+        "Shaders::LineGL::setMiterLimit(): the shader was created with Shaders::LineGL::JoinStyle::Bevel\n");
 }
 
 #ifndef MAGNUM_TARGET_GLES2

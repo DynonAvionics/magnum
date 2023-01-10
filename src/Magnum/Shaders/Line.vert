@@ -519,7 +519,7 @@ void main() {
             #endif
             ;
 
-        /* Outer point of a beveled / circular join -- although
+        /* Outer point of a beveled join -- although
            https://www.w3.org/TR/svg-strokes/#LineJoin doesn't define *what
            exactly* is a bevel, it's defined as "Cuts the outside edge off
            where a circle the diameter of the stroke intersects the stroke." at
@@ -529,31 +529,23 @@ void main() {
            from the AB segment, and in the other from the BC segment (left
            diagram).
 
-           A circular join then extends the 2a / 2b points in the direction of
-           their respective segments so that the triangle edge is also at a distance `w` from B, with the angle `ρ` between the triangle edge
-           and the `w` line also being 90° (right diagram).
-
-           TODO move the circular join bit later? or maybe move the bevel details
-           into the branch that actually computes it, and not the general
-           overview
-
-            0---   ----2a               0---   -------2a
-            |          |^\              |            |  \
-            |         | e -             |           | w/ρ\
-            |         | |ρ  \           |          | /  _2b
-            A--  ----|--B-e->2b         A--  -----|-B _- |
-            |       |   |  _-|          |        |  _-   |
-            |       |   _-   |          |       | _-|    |
-            |      | _- |    |          |      |_-  |    |
-            1--  --3    |    |          1--  --3    |    |
-                   |    |    |                 |    |    |
-                        C                           C */
+            0---   ----2a
+            |          |^\
+            |         | e -
+            |         | |ρ  \   b
+            A--  ----|--B-e->2b
+            |       |   |  _-|
+            |       |   _-   |
+            |      | _- |    |
+            1--  --3    |    |
+                   |    |    |
+                        C
+        */
         if(outerBeveledPoint) {
             screenspacePointDirection = screenspaceEdgeDirectionNormalized*edgeDistanceSigned;
 
             centerDistanceSigned.x = halfSegmentLength*neighborSign;
             /* hasCap set below */
-            // TODO circular join
 
         /* Otherwise it's either an outer point of a miter join (basically
            points 2a and 2b from above evaluated to the same position), or the

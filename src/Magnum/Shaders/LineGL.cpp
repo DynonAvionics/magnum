@@ -130,9 +130,6 @@ template<UnsignedInt dimensions> typename LineGL<dimensions>::CompileState LineG
         case JoinStyle::Bevel:
             joinStyleDefine = "#define JOIN_STYLE_BEVEL\n"_s;
             break;
-        case JoinStyle::Round:
-            joinStyleDefine = "#define JOIN_STYLE_ROUND\n"_s;
-            break;
     }
     CORRADE_INTERNAL_ASSERT(capStyleDefine);
     CORRADE_INTERNAL_ASSERT(joinStyleDefine);
@@ -486,7 +483,6 @@ Debug& operator<<(Debug& debug, const LineGLJoinStyle value) {
         /* LCOV_EXCL_START */
         #define _c(v) case LineGLJoinStyle::v: return debug << "::" #v;
         _c(Miter)
-        _c(Round)
         _c(Bevel)
         #undef _c
         /* LCOV_EXCL_STOP */
