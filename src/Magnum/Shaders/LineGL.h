@@ -67,8 +67,6 @@ namespace Implementation {
     };
 }
 
-// TODO drop all ES2-specific ifdefs, this needs ES3 due to gl_VertexID
-
 /**
 @brief Line GL shader
 @m_since_latest
@@ -398,7 +396,41 @@ template<UnsignedInt dimensions> class MAGNUM_SHADERS_EXPORT LineGL: public GL::
 
         LineGL<dimensions>& setSmoothness(Float smoothness);
 
-        LineGL<dimensions>& setMiterLimit(Float smoothness);
+        /**
+         * @brief Set miter length limit
+         * @m_since_latest
+         *
+         * Maximum length (relative to line width) over which a
+         * @ref JoinStyle::Miter join is converted to a @ref JoinStyle::Bevel
+         * in order to avoid sharp corners extending too much. Default value is
+         * @cpp 4.0f @ce, which corresponds to approximately 29 degrees.
+         * Alternatively you can set the limit as an angle using
+         * @ref setMiterAngleLimit(). Miter length is calculated using the
+         * following formula, where @f$ w @f$ is line half-width, @f$ l @f$ is
+         * miter length and @f$ \theta @f$ is angle between two line segments:
+         * @f[
+         *      \frac{w}{l} = \sin(\frac{\theta}{2})
+         * @f]
+         *
+         * Expects that @ref joinStyle() is @ref JoinStyle::Miter and @p limit
+         * is greater or equal to @cpp 1.0f @ce and finite.
+         */
+        LineGL<dimensions>& setMiterLengthLimit(Float limit);
+
+        /**
+         * @brief Set miter angle limit
+         * @m_since_latest
+         *
+         * Like @ref setMiterLengthLimit(), but specified as a minimum angle
+         * below which a @ref JoinStyle::Miter join is converted to a
+         * @ref JoinStyle::Bevel in order to avoid sharp corners extending too
+         * much. Default value is approximately @cpp 28.955_degf @ce, see the
+         * above function for more information.
+         *
+         * Expects that @ref joinStyle() is @ref JoinStyle::Miter and @p limit
+         * is greater than @cpp 0.0_radf @ce.
+         */
+        LineGL<dimensions>& setMiterAngleLimit(Rad limit);
 
         LineGL<dimensions>& setBackgroundColor(const Magnum::Color4& color);
 

@@ -176,18 +176,6 @@ void main() {
     lowp const vec4 color = materials[materialId].color;
     #endif
 
-//     // TODO this comment is plain wrong; also the whole edge thing is not used for anything!!
-//     /* Pixels with `abs(centerDistanceSigned) <= [d+w,w]` are foreground,
-//        pixels with `abs(centerDistanceSigned) > [d+w+s,w+s]` are background,
-//        smoothstep in between */
-//     highp const vec2 edge = vec2(halfSegmentLength
-//         #if defined(CAP_STYLE_SQUARE) || defined(CAP_STYLE_ROUND) || defined(CAP_STYLE_TRIANGLE)
-//         + 0.5*width
-//         #elif !defined(CAP_STYLE_BUTT)
-//         #error
-//         #endif
-//         , width*0.5);
-
     // TODO better names ffs
     highp vec2 distance_ = vec2(max(abs(centerDistanceSigned.x)
         #ifdef CAP_STYLE_BUTT
@@ -210,11 +198,8 @@ void main() {
     // TODO clean this up so it doesn't include width (which isn't present for butts)
     const highp float factor = smoothstep(width*0.5 - smoothness, width*0.5 + smoothness, distanceS);
 
-//     #if 1 // TODO wat???
-//     const highp float factorX = distance(abs(centerDistanceSigned), vec2(halfSegmentLength, 0.0));
-//     #else
-//     const highp float factorX = factor.x;
-//     #endif
+//     fragmentColor = vec4(centerDistanceSigned*0.5/vec2(halfSegmentLength + width*0.5, width*0.5) + vec2(0.5), 0.0, 1.0);
+//     return;
 
     fragmentColor = mix(
         #ifdef VERTEX_COLOR
@@ -223,12 +208,6 @@ void main() {
         color, backgroundColor, factor);
 
     #ifdef OBJECT_ID
-//     // TODO how to handle smoothness here? or just put objectID to the whole area? makes more sense that way, than having small bits of 0 at random places
-//     fragmentObjectId = all(lessThan(abs(centerDistanceSigned), edge)) ?
-//         #ifdef INSTANCED_OBJECT_ID
-//         interpolatedInstanceObjectId +
-//         #endif
-//         objectId : 0u;
     fragmentObjectId = objectId;
     #endif
 }

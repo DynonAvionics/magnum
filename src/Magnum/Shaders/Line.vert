@@ -100,7 +100,8 @@ layout(location = 4)
 #endif
 uniform mediump float miterLimit
     #ifndef GL_ES
-    = 4.0
+    /* cos(2*asin(1.0/4.0)), with 4 being the documented limit */
+    = 0.875
     #endif
     ;
 
@@ -141,6 +142,8 @@ layout(std140
 
 /* Inputs */
 
+// TODO put into a separate attribute!!! actually don't because we need this in
+//  the prev/next point too, eventually
 /* The third component in 2D (or fourth in 3D) is a point marker. Its sign
    denotes the direction (above the line / below the line) in which it extends
    to form a quad, its absolute value is then a combination bits indicating the
@@ -165,10 +168,8 @@ layout(std140
    input, it made it impossible to alias the position attribute with
    previousPosition/nextPosition, leading to a much higher memory use. */
 // TODO move the last paragraph elsewhere? "GET A BLOG GODDAMIT" etc
-// TODO orientation of the "both" cap?
 #define POINT_MARKER_BEGIN_MASK 1u
-#define POINT_MARKER_END_MASK 2u // TODO use this for zero-length lines (points)
-#define POINT_MARKER_CAP_MASK 4u
+#define POINT_MARKER_CAP_MASK 2u
 #ifdef EXPLICIT_ATTRIB_LOCATION
 layout(location = LINE_POSITION_ATTRIBUTE_LOCATION)
 #endif
@@ -327,11 +328,6 @@ void main() {
                  e        e
                  v        v */
     highp const uint pointMarker = uint(abs(pointMarkerSign));
-    // TODO handle if both begin & end, or could that be handling rotated
-    //  points somehow? since it's two ways to encode, either setting both the
-    //  begin and end bit, or having a zero-length line (i.e., the line could
-    //  be not actually zero-length to contain the direction, but BEGIN + END
-    //  set would make it zero-length
     highp const vec2 lineDirection = bool(pointMarker & POINT_MARKER_BEGIN_MASK) ?
         transformedNextPosition - transformedPosition :
         transformedPosition - transformedPreviousPosition;
@@ -341,7 +337,7 @@ void main() {
     /* Line direction and its length converted from the [-1, 1] unit square to
        the screen space so we properly take aspect ratio into account. In the
        end it undoes the transformation by multiplying by 2.0/viewportSize
-       again. */ // TODO avoid this somehow? i.e., pass in just aspect ratio, and prescale width by ... ugh what exactly? a 2D vector???
+       again. */
     highp const vec2 screenspaceLineDirection = lineDirection*viewportSize/2.0;
     highp const float screenspaceLineDirectionLength = length(screenspaceLineDirection);
 
@@ -364,9 +360,6 @@ void main() {
     #else
     #error
     #endif
-    // TODO do we actually need the unsigned capDistance/edgeDistance?
-    highp const float edgeDistanceSigned = edgeDistance*edgeSign;
-    highp const float capDistanceSigned = capDistance*neighborSign;
 
     /* Line segment half-length, passed to the fragment shader. Same for all
        four points. */
@@ -383,9 +376,7 @@ void main() {
             center, passed to the fragment shader. It's chosen in a way that
             interpolates to zero in the quad center, and the area where
             `all(abs(centerDistanceSigned) <= vec2(halfSegmentLength +
-            capDistance, edgeDistance))` is inside the line. Edge distance in
-            the Y coordinate is common for both and thus calculated here
-            already.
+            capDistance, edgeDistance))` is inside the line.
         -   `hasCap` contains `abs(centerDistanceSigned.x)` with a sign
             positive if the point is a cap and negative if it isn't. Given
             segment endpoints A and B (and quad points 0/1 and 2/3
@@ -431,7 +422,10 @@ void main() {
     [-d-c-s,-w-s]                   [+d,-w-s]
 
     */
-    centerDistanceSigned.y = edgeDistanceSigned;
+    centerDistanceSigned =
+        /* The the Y coordinate is same for all cases, X coordinate gets
+           further adjusted below */
+        vec2(halfSegmentLength*neighborSign, edgeDistance*edgeSign);
     highp vec2 screenspacePointDirection;
 
     /* Line cap -- the quad corner 0/1/2/3 a sum of the signed cap distance
@@ -456,12 +450,14 @@ void main() {
        from A and positive for B). */
     if(bool(pointMarker & POINT_MARKER_CAP_MASK)) {
         screenspacePointDirection =
-            screenspaceLineDirectionNormalized*capDistanceSigned +
-            screenspaceEdgeDirectionNormalized*edgeDistanceSigned;
+            screenspaceLineDirectionNormalized*capDistance*neighborSign +
+            screenspaceEdgeDirectionNormalized*edgeDistance*edgeSign;
 
-        highp const float centerDistanceUnsignedX = halfSegmentLength + capDistance;
-        centerDistanceSigned.x = centerDistanceUnsignedX*neighborSign;
-        hasCap = centerDistanceUnsignedX;
+        /* Add signed cap distance to the center distance */
+        centerDistanceSigned.x += capDistance*neighborSign;
+
+        /* No cap here, store a negative value */
+        hasCap = abs(centerDistanceSigned.x);
 
     /* Line join otherwise */
     } else {
@@ -479,42 +475,33 @@ void main() {
         highp const vec2 neighborDirection = bool(pointMarker & POINT_MARKER_BEGIN_MASK) ?
             transformedPreviousPosition - transformedPosition :
             transformedNextPosition - transformedPosition;
-        // TODO screenspace neighbor direction!
-        // TODO what does this do in presence of zero-length line segments?
-        //  document that, especially important when the aliased attributes are
-        //  used (forbid those except for standalone points, e.g.)
-        highp const vec2 neighborDirectionNormalized = normalize(neighborDirection);
+        /* Screenspace neighbor direction and its length, calculated
+           equivalently to screenspace line direction above */
+        highp const vec2 screenspaceNeighborDirectionNormalized = normalize(neighborDirection*viewportSize/2.0);
 
-        /* Calculate the angle `α` between the edge direction vector `e` and
-           the neighbor direction vector `nd` in order to decide whether this
-           is an inner or outer point. It's an outer point if the angle is
-           larger than 90°, i.e. when the two go in the opposite direction,
-           which is when the dot product is negative:
+        /* If the edge direction vector `e` and the neighbor direction vector
+           `nd` point to the opposite direction (i.e., their dot product is
+           negative), this is an outer point of the line and a candidate for
+           a bevel.
 
                  ^
                  e
                  |
-            -----2 α
+            -d->-2
                  |\
              B   | nd
                  |  \
             -----3   v
 
-           */
-        // TODO maybe the sign could be a part of the screenspaceEdgeDirectionNormalized already? would save a multiplication above as well
-        highp const float pointAngleCos = dot(screenspaceEdgeDirectionNormalized*edgeSign, neighborDirectionNormalized);
-
-        /* It's an outer point of a beveled joint either if bevel/circle joins
-           are desired everywhere (and this is an outer point) or if we want
-           miter joints and the angle between the edge direction and neighbor
-           direction vectors is larger than a specified limit (where the limit
-           is always more than 90°, because less than 90° are inner points). */
-        const bool outerBeveledPoint = // false && // TODO
-            #if defined(JOIN_STYLE_BEVEL) || defined(JOIN_STYLE_ROUND)
-            pointAngleCos < 0.0
-            #elif defined(JOIN_STYLE_MITER)
-            pointAngleCos < -1.0 // -miterLimit // TODO
-            #else
+           If a miter join is used instead of a bevel, the point is beveled
+           only if the line direction `d` and neighbor direction `nd` is
+           sharper than a limit (i.e., their dot product, or a cosine of their
+           angle, is between `[-1, -miterLimit]`). */
+        const bool outerBeveledPoint =
+            dot(screenspaceEdgeDirectionNormalized*edgeSign, screenspaceNeighborDirectionNormalized) < 0.0
+            #if defined(JOIN_STYLE_MITER)
+            && dot(screenspaceLineDirectionNormalized*neighborSign, screenspaceNeighborDirectionNormalized) < -miterLimit
+            #elif !defined(JOIN_STYLE_BEVEL)
             #error
             #endif
             ;
@@ -523,16 +510,12 @@ void main() {
            https://www.w3.org/TR/svg-strokes/#LineJoin doesn't define *what
            exactly* is a bevel, it's defined as "Cuts the outside edge off
            where a circle the diameter of the stroke intersects the stroke." at
-           e.g. https://apike.ca/prog_svg_line_cap_join.html, which ultimately
-           means the `2a` and `2b` quad endpoints are simply the edge direction
-           vector `e` away from point B, in one case with the `e` calculated
-           from the AB segment, and in the other from the BC segment (left
-           diagram).
+           e.g. https://apike.ca/prog_svg_line_cap_join.html.
 
             0---   ----2a
             |          |^\
-            |         | e -
-            |         | |ρ  \   b
+            |         | e -_
+            |         | |ρ  \
             A--  ----|--B-e->2b
             |       |   |  _-|
             |       |   _-   |
@@ -540,12 +523,15 @@ void main() {
             1--  --3    |    |
                    |    |    |
                         C
-        */
-        if(outerBeveledPoint) {
-            screenspacePointDirection = screenspaceEdgeDirectionNormalized*edgeDistanceSigned;
 
-            centerDistanceSigned.x = halfSegmentLength*neighborSign;
-            /* hasCap set below */
+           Which ultimately means the `2a` and `2b` quad endpoints are simply
+           the edge direction vector `e` away from point B, in one case with
+           the `e` calculated from the AB segment, and in the other from the BC
+           segment. */
+        if(outerBeveledPoint) {
+            screenspacePointDirection = screenspaceEdgeDirectionNormalized*edgeDistance*edgeSign;
+            /* centerDistanceSigned doesn't need any adjustment, hasCap is set
+               below for both */
 
         /* Otherwise it's either an outer point of a miter join (basically
            points 2a and 2b from above evaluated to the same position), or the
@@ -569,34 +555,36 @@ void main() {
 
            With `2α` being the angle between `d` and `nd`, `α` appears in two
            right triangles and the following holds, `w` being the edge distance
-           from above, and `j` being the length that's needed to scale
+           from above, and `j` having the length that's needed to scale
            `perpendicular(normalized(d + nd))` to get point 2:
 
-                     |d + nd|    w               2 w
-            sin(α) = -------- = ---   -->  j = --------
-                      2 |d|      j             |d + nd|
+                     |d + nd|    w                 2 w
+            sin(α) = -------- = ---   -->  |j| = --------
+                      2 |d|     |j|              |d + nd|
+
+           Then, vector j is the following, meaning we avoid the normalization
+           square root completely:
+
+                    perp(d + nd)   (2 w)perp(d + nd)
+            j = |j| ------------ = -----------------
+                      |d + nd|        dot(d + nd)
 
            Point 3 is then just in the opposite direction; for the other side
            it's done equivalently. */
         } else {
-            /* Screenspace neighbor direction and its length, calculated
-               equivalently to screenspace line direction above */
-            // TODO what about zero-length segments?
-            highp const vec2 screenspaceNeighborDirectionNormalized = normalize(neighborDirection*viewportSize/2.0);
-
             highp const vec2 averageDirection = neighborSign*screenspaceLineDirectionNormalized + screenspaceNeighborDirectionNormalized;
-            highp const float averageDirectionLength = length(averageDirection);
-            highp const float j = 2.0*edgeDistance/averageDirectionLength;
-            screenspacePointDirection = (normalize(perpendicular(averageDirection))*neighborSign*edgeSign*j);
+            screenspacePointDirection = (perpendicular(averageDirection)*(neighborSign*edgeSign*2.0*edgeDistance/dot(averageDirection, averageDirection)));
 
-            // TODO ex?! what is all this
-            highp const float ex = sqrt(j*j - edgeDistance*edgeDistance);
-            centerDistanceSigned.x = halfSegmentLength*neighborSign + ex*sign(dot(lineDirection*neighborSign, (perpendicular(averageDirection))*edgeSign));
+            /* By projecting the point direction onto the line direction we
+               get a signed distance from the endpoint, adjust center distance
+               with that */
+            centerDistanceSigned.x += dot(screenspacePointDirection, screenspaceLineDirectionNormalized);
         }
 
-        // TODO any way to get this value unsigned? probably not, esp given
-        // that the inner join might be on the negative side of the center HUH
-        // but TODO then it should be positive too, no?? test!
+        /* No cap here, store a negative value */
+        // TODO if sign(centerDistanceSigned.x) is different from neighborSign,
+        //  then the sign here should be taken based on whether the other point
+        //  is a cap -- and thus we need the other two point flags
         hasCap = -abs(centerDistanceSigned.x);
     }
 

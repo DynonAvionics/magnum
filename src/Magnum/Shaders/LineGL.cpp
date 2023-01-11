@@ -45,6 +45,7 @@
 namespace Magnum { namespace Shaders {
 
 using namespace Containers::Literals;
+using namespace Math::Literals;
 
 namespace {
     enum: Int {
@@ -278,6 +279,9 @@ template<UnsignedInt dimensions> LineGL<dimensions>::LineGL(CompileState&& state
     #endif
     {
         setTransformationProjectionMatrix(MatrixTypeFor<dimensions, Float>{Math::IdentityInit});
+        setWidth(1.0f);
+        /* Smoothness is zero by default */
+        setMiterLengthLimit(4.0f);
         setColor(Magnum::Color4{1.0f});
         /* Object ID is zero by default */
     }
@@ -323,14 +327,33 @@ template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setSmoo
     return *this;
 }
 
-template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setMiterLimit(const Float limit) {
+template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setMiterLengthLimit(const Float limit) {
     #ifndef MAGNUM_TARGET_GLES2
     CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
-        "Shaders::LineGL::setColor(): the shader was created with uniform buffers enabled", *this);
+        "Shaders::LineGL::setMiterLengthLimit(): the shader was created with uniform buffers enabled", *this);
     #endif
     CORRADE_ASSERT(_joinStyle == JoinStyle::Miter,
-        "Shaders::LineGL::setMiterLimit(): the shader was created with" << _joinStyle, *this);
-    setUniform(_miterLimitUniform, limit);
+        "Shaders::LineGL::setMiterLengthLimit(): the shader was created with" << _joinStyle, *this);
+    CORRADE_ASSERT(limit >= 1.0f && !Math::isInf(limit),
+        "Shaders::LineGL::setMiterLengthLimit(): expected a finite value greater than or equal to 1, got" << limit, *this);
+    /* Calculate the half-angle from the length and supply a cosine of it to
+       the shader */
+    !Debug{} << limit << Deg(2.0f*Math::asin(1.0f/limit)) << Math::cos(2.0f*Math::asin(1.0f/limit));
+    setUniform(_miterLimitUniform, Math::cos(2.0f*Math::asin(1.0f/limit)));
+    return *this;
+}
+
+template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setMiterAngleLimit(const Rad limit) {
+    #ifndef MAGNUM_TARGET_GLES2
+    CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
+        "Shaders::LineGL::setMiterAngleLimit(): the shader was created with uniform buffers enabled", *this);
+    #endif
+    CORRADE_ASSERT(_joinStyle == JoinStyle::Miter,
+        "Shaders::LineGL::setMiterAngleLimit(): the shader was created with" << _joinStyle, *this);
+    CORRADE_ASSERT(limit > 0.0_radf,
+        "Shaders::LineGL::setMiterAngleLimit(): expected a value greater than 0, got" << limit, *this);
+    /* Supply a cosine of the angle to the shader */
+    setUniform(_miterLimitUniform, Math::cos(limit));
     return *this;
 }
 
