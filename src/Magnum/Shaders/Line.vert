@@ -142,45 +142,34 @@ layout(std140
 
 /* Inputs */
 
-// TODO put into a separate attribute!!! actually don't because we need this in
-//  the prev/next point too, eventually
-/* The third component in 2D (or fourth in 3D) is a point marker. Its sign
-   denotes the direction (above the line / below the line) in which it extends
-   to form a quad, its absolute value is then a combination bits indicating the
-   following:
+/* The third component in 2D (or fourth in 3D) is a point marker. It's a
+   combination of bits indicating the following:
 
+    -   line up, in which case the point extends above the line to form a quad;
+        and conversely if not set the point extends below the line to form a
+        quad
     -   line begin, in which case the second point of the segment is stored in
         the nextPosition input, and the neighboring segment point (if any) is
-        stored in previousPosition
-    -   line end, in which case the second point of the segment is stored in
-        the previousPosition input, and the neighboring segment point (if any)
-        is stored in nextPosition
+        stored in previousPosition; and conversely if not set the second point
+        of the segment is stored in the previousPosition input, and the
+        neighboring segment point (if any) is stored in nextPosition
     -   line cap, in which case the neighboring segment point should be ignored
         and instead a line cap formed; and conversely if not set the
-        neighboring segment points are meant to be used to form a line join
-
-   The sign / extension direction could theoretically be inferred from
-   `gl_VertexID & 1`, but doing so makes it very tied to the actual vertex order
-   which may not be desirable. An alternative scenario considered was using
-   NaNs in previousPosition / nextPosition to mark caps and then, if those
-   aren't NaNs, it's a join, and the begin/end is implicit based on
-   `gl_VertexID % 2`. But while that removed the need for a dedicated extra
-   input, it made it impossible to alias the position attribute with
-   previousPosition/nextPosition, leading to a much higher memory use. */
-// TODO move the last paragraph elsewhere? "GET A BLOG GODDAMIT" etc
-#define POINT_MARKER_BEGIN_MASK 1u
-#define POINT_MARKER_CAP_MASK 2u
+        neighboring segment points are meant to be used to form a line join */
+#define POINT_MARKER_UP_MASK 1u
+#define POINT_MARKER_BEGIN_MASK 2u
+#define POINT_MARKER_CAP_MASK 4u
 #ifdef EXPLICIT_ATTRIB_LOCATION
 layout(location = LINE_POSITION_ATTRIBUTE_LOCATION)
 #endif
 #ifdef TWO_DIMENSIONS
-in highp vec3 positionPointMarkerSign;
-#define position positionPointMarkerSign.xy
-#define pointMarkerSign positionPointMarkerSign.z
+in highp vec3 positionPointMarkerComponent;
+#define position positionPointMarkerComponent.xy
+#define pointMarkerComponent positionPointMarkerComponent.z
 #elif defined(THREE_DIMENSIONS)
-in highp vec4 positionPointMarkerSign;
-#define position positionPointMarkerSign.xyz
-#define pointMarkerSign positionPointMarkerSign.w
+in highp vec4 positionPointMarkerComponent;
+#define position positionPointMarkerComponent.xyz
+#define pointMarkerComponent positionPointMarkerComponent.w
 #else
 #error
 #endif
@@ -307,31 +296,34 @@ void main() {
     #endif
 
     /* Decide about the line direction vector `d` and edge direction vector `e`
-       from the `pointMarkerSign` input. Quad corners 0 and 1 come from segment
-       endpoint A, are marked with the POINT_MARKER_BEGIN_MASK bit and so their
-       line direction is taken from `nextPosition`, quad corners 2 and 3 come
-       from B and are marked with POINT_MARKER_END_MASK and so their line
-       direction is taken from `previousPosition`, with the direction being
-       always from point A to point B. The edge direction is then perpendicular
-       to the line direction, thus points 0 and 2 can use it as-is (+), while
-       points 1 and 2 have to negate it (-).
+       from the `pointMarkerComponent` input. Quad corners 0 and 1 come from
+       segment endpoint A, are marked with the POINT_MARKER_BEGIN_MASK bit and
+       so their line direction is taken from `nextPosition`, quad corners 2 and
+       3 come from B and are *not* marked with POINT_MARKER_BEGIN_MASK and so
+       their line direction is taken from `previousPosition`, with the
+       direction being always from point A to point B. The edge direction is
+       then perpendicular to the line direction, with points 0 and 2 marked
+       with POINT_MARKER_UP_MASK using it directly, while points 1 and 3
+       don't have POINT_MARKER_UP_MASK and have to negate it:
 
                  ^        ^
                  e        e
                  |        |
-        [+BEGIN] 0-d-->   2-d--> [+END]
+     [UP, BEGIN] 0-d-->   2-d--> [END]
 
                  A        B
 
-        [-BEGIN] 1-d-->   3-d--> [-END]
+         [BEGIN] 1-d-->   3-d--> []
                  |        |
                  e        e
-                 v        v */
-    highp const uint pointMarker = uint(abs(pointMarkerSign));
+                 v        v
+
+       The POINT_MARKER_CAP_MASK is then used below. */
+    highp const uint pointMarker = uint(pointMarkerComponent);
     highp const vec2 lineDirection = bool(pointMarker & POINT_MARKER_BEGIN_MASK) ?
         transformedNextPosition - transformedPosition :
         transformedPosition - transformedPreviousPosition;
-    highp const float edgeSign = pointMarkerSign > 0.0 ? 1.0 : -1.0;
+    highp const float edgeSign = bool(pointMarker & POINT_MARKER_UP_MASK) ? 1.0 : -1.0;
     highp const float neighborSign = bool(pointMarker & POINT_MARKER_BEGIN_MASK) ? -1.0 : 1.0;
 
     /* Line direction and its length converted from the [-1, 1] unit square to

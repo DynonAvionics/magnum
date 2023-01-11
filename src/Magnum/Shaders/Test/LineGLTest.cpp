@@ -27,7 +27,6 @@
 #include <Corrade/Containers/GrowableArray.h>
 #include <Corrade/Containers/StridedArrayView.h>
 #include <Corrade/PluginManager/Manager.h>
-#include <Corrade/Utility/Algorithms.h>
 #include <Corrade/Utility/DebugStl.h>
 #include <Corrade/Utility/FormatStl.h>
 #include <Corrade/Utility/Path.h>
@@ -96,9 +95,9 @@ struct LineGLTest: GL::OpenGLTester {
     template<LineGL2D::Flag flag = LineGL2D::Flag{}> void renderDefaults2D();
     template<LineGL3D::Flag flag = LineGL3D::Flag{}> void renderDefaults3D();
 
-    template<LineGL2D::Flag flag = LineGL2D::Flag{}> void render2D();
-    void render2DReversed();
-    void render2DTransformed();
+    template<LineGL2D::Flag flag = LineGL2D::Flag{}> void renderLineCapsJoins2D();
+    void renderLineCapsJoins2DReversed();
+    void renderLineCapsJoins2DTransformed();
 
     template<LineGL3D::Flag flag = LineGL3D::Flag{}> void render3D();
 
@@ -213,148 +212,77 @@ const struct {
         "expected a value greater than 0, got Rad(0)"}
 };
 
-// TODO multiply all by 10 and make origin bottom left to have some transformation matrix used
-Vector2 LineCapJoinData[]{
-    /* A single point (a zero-length line) */
-    {0.2f, 0.8f}, {0.2f, 0.8f},
-    /* A rotated point (i.e., a line of a very small length). Should ideally be
-       symmetric. */
-    /** @todo it isn't, why? */
-    {-0.4f, 0.15f}, {-0.4f + Math::TypeTraits<Float>::epsilon(), 0.15f + Math::TypeTraits<Float>::epsilon()},
-    /* A 90° join with a large length ratio. Caps should look the same on both
-       ends, independently on the length */
-    {-0.8f, 0.7f}, {-0.8f, -0.25f},
-    {-0.8f, -0.25f}, {-0.6f, -0.25f},
-    /* A four-segment line with a 60°, 120° and a 30° join. All should be
-       miters in the default setup. */
-    Vector2{0.25f, 0.3f} + Complex::rotation(-60.0_degf).transformVector(Vector2::yAxis(0.6f)) + Vector2::yAxis(-0.3f),
-        Vector2{0.25f, 0.3f} + Complex::rotation(-60.0_degf).transformVector(Vector2::yAxis(0.6f)),
-    Vector2{0.25f, 0.3f} + Complex::rotation(-60.0_degf).transformVector(Vector2::yAxis(0.6f)),
-        {0.2f, 0.35f},
-    {0.2f, 0.35f},
-        Vector2{0.25f, 0.3f} + Complex::rotation(60.0_degf).transformVector(Vector2::yAxis(0.6f)),
-    Vector2{0.25f, 0.3f} + Complex::rotation(60.0_degf).transformVector(Vector2::yAxis(0.6f)),
-        Vector2{0.25f, 0.3f} + Complex::rotation(60.0_degf).transformVector(Vector2::yAxis(0.6f)) +
-        Complex::rotation(30.0_degf).transformVector(Vector2::yAxis(-0.5f)),
-    /* A completely ordinary line segment, to test the case when everything
-       goes wrong */
-    {0.4f, -0.05f}, {0.8f, -0.05f},
-    /* A 180° join, with one part shorter. Should be always beveled, should not
-       overlap and should not disappear. */
-    /** @todo the other end disappears, fix */
-    {0.8f, -0.4f}, {0.0f, -0.4f},
-    {0.0f, -0.4f}, {0.8f, -0.40001f}, /** @todo otherwise disappears, fix */
-    /* A join where the other line touches the edge (either slightly above for
-       square/round caps, or slightly below for butt caps). The caps should not
-       get distorted in any way. */
-    /** @todo they do, fix */
-    {-0.45f, -0.8f}, {-0.7f, -0.8f},
-    {-0.7f, -0.8f},
-        Vector2{-0.7f, -0.8f} + Complex::rotation(60.0_degf).transformVector(Vector2::xAxis(0.2f)),
-    /* A join where the other line endpoint is inside the line. The caps should
-       not get distorted and it shouldn't overlap. */
-    /** @todo it's distorted heavily, fix */
-    {0.25f, -0.8f}, {0.0f, -0.8f},
-    {0.0f, -0.8f},
-        Vector2{0.0f, -0.8f} + Complex::rotation(60.0_degf).transformVector(Vector2::xAxis(0.01f)),
-    /* Like above, but with the first line short as well */
-    /** @todo here's both a heavy distortion and an overlap, fix */
-    {0.725f, -0.8f}, {0.7f, -0.8f},
-    {0.7f, -0.8f},
-        Vector2{0.7f, -0.8f} + Complex::rotation(60.0_degf).transformVector(Vector2::xAxis(0.01f))
-};
-
-// TODO put these into the test case instead?
-template<class T, std::size_t size> Containers::Array<T> nonOwningArray(const T(&data)[size]) {
-    return Containers::Array<T>{const_cast<T*>(data), size, [](T*, std::size_t){}};
-}
-
 const struct {
     const char* name;
-    Containers::Array<Vector2> lineSegments;
     Float width;
     Float smoothness;
     Containers::Optional<Float> miterLengthLimit;
     Containers::Optional<Deg> miterAngleLimit;
     Containers::Optional<LineGL2D::CapStyle> capStyle;
     Containers::Optional<LineGL2D::JoinStyle> joinStyle;
-    bool expectOverlap; /** @todo uhhhh all overlap, what to do? */
     const char* expected;
-} Render2DData[]{
+} RenderLineCapsJoins2DData[]{
     {"caps & joints default, flat",
-        nonOwningArray(LineCapJoinData),
         16.0f, 0.0f, {}, {}, {}, {},
-        true, "caps-square-joins-miter-flat.tga"},
+        "caps-square-joins-miter-flat.tga"},
     {"caps butt, joins default, flat",
-        nonOwningArray(LineCapJoinData),
         16.0f, 0.0f, {}, {},
         LineGL2D::CapStyle::Butt, {},
-        true, "caps-butt-joins-miter-flat.tga"},
+        "caps-butt-joins-miter-flat.tga"},
     {"caps butt, joins bevel",
-        nonOwningArray(LineCapJoinData),
         16.0f, 1.0f, {}, {},
         LineGL2D::CapStyle::Butt, LineGL2D::JoinStyle::Bevel,
-        true, "caps-butt-joins-bevel.tga"}, // TODO the smoothing is off for 30°
+        "caps-butt-joins-bevel.tga"}, // TODO the smoothing is off for 30°
     {"caps square, joins miter",
-        nonOwningArray(LineCapJoinData),
         16.0f, 1.0f, {}, {},
         LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
-        true, "caps-square-joins-miter.tga"},
+        "caps-square-joins-miter.tga"},
     {"caps square, joins bevel",
-        nonOwningArray(LineCapJoinData),
         16.0f, 1.0f, {}, {},
         LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Bevel,
-        true, "caps-square-joins-bevel.tga"}, // TODO the smoothing is off for 30°
+        "caps-square-joins-bevel.tga"}, // TODO the smoothing is off for 30°
     {"caps square, joins miter, miter limit 3.95",
-        nonOwningArray(LineCapJoinData),
         16.0f, 1.0f, 3.95f, {},
         LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
         /* Same as default */
-        true, "caps-square-joins-miter.tga"},
+        "caps-square-joins-miter.tga"},
     {"caps square, joins miter, miter limit 3.6",
-        nonOwningArray(LineCapJoinData),
         16.0f, 1.0f, 3.6f, {}, /** @todo 3.85 should work but it doesn't */
         LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
         /* The 30° join should get a bevel here */
-        true, "caps-square-joins-miter-limit-36.tga"},
+        "caps-square-joins-miter-limit-36.tga"},
     {"caps square, joins miter, miter limit 59°",
-        nonOwningArray(LineCapJoinData),
         16.0f, 1.0f, {}, 59.0_degf,
         LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
         /* Same as limit 3.6, the 30° join gets a bevel */
-        true, "caps-square-joins-miter-limit-36.tga"},
+        "caps-square-joins-miter-limit-36.tga"},
     {"caps square, joins miter, miter limit 70°",
-        nonOwningArray(LineCapJoinData),
         16.0f, 1.0f, {}, 70.0_degf, /** @todo 61° should work but it doesn't */
         LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
         /* The 30° and 60° join should get a bevel here, 90° and 120° should
            stay */
-        true, "caps-square-joins-miter-limit-70deg.tga"},
+        "caps-square-joins-miter-limit-70deg.tga"},
     {"caps square, joins miter, miter limit 89°",
-        nonOwningArray(LineCapJoinData),
         16.0f, 1.0f, {}, 89.0_degf,
         LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
         /* Same as limit 61°, the 30° and 60° joins get a bevel, 90° and 120°
            not */
-        true, "caps-square-joins-miter-limit-70deg.tga"},
+        "caps-square-joins-miter-limit-70deg.tga"},
     {"caps square, joins miter, miter limit 91°",
-        nonOwningArray(LineCapJoinData),
         16.0f, 1.0f, {}, 91.0_degf,
         LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
         /* The 30°, 60° and 90° join should get a bevel here, 120° should
            stay */
-        true, "caps-square-joins-miter-limit-91deg.tga"},
+        "caps-square-joins-miter-limit-91deg.tga"},
     {"caps round, joins miter",
         /** @todo use round joins instead once implemented */
-        nonOwningArray(LineCapJoinData),
         16.0f, 1.0f, {}, {},
         LineGL2D::CapStyle::Round, LineGL2D::JoinStyle::Miter,
-        true, "caps-round-joins-miter.tga"},
+        "caps-round-joins-miter.tga"},
     {"caps triangle, joins bevel",
-        nonOwningArray(LineCapJoinData),
         16.0f, 1.0f, {}, {},
         LineGL2D::CapStyle::Triangle, LineGL2D::JoinStyle::Bevel,
-        true, "caps-triangle-joins-bevel.tga"},
+        "caps-triangle-joins-bevel.tga"},
 };
 
 LineGLTest::LineGLTest() {
@@ -454,14 +382,14 @@ LineGLTest::LineGLTest() {
 
     /* MSVC needs explicit type due to default template args */
     addInstancedTests<LineGLTest>({
-        &LineGLTest::render2D,
+        &LineGLTest::renderLineCapsJoins2D,
         #ifndef MAGNUM_TARGET_GLES2
-        // &LineGLTest::render2D<LineGL2D::Flag::UniformBuffers>,
+        // &LineGLTest::renderLineCapsJoins2D<LineGL2D::Flag::UniformBuffers>,
         #endif
-        &LineGLTest::render2DReversed,
-        &LineGLTest::render2DTransformed,
+        &LineGLTest::renderLineCapsJoins2DReversed,
+        &LineGLTest::renderLineCapsJoins2DTransformed,
         },
-        Containers::arraySize(Render2DData),
+        Containers::arraySize(RenderLineCapsJoins2DData),
         &LineGLTest::renderSetup,
         &LineGLTest::renderTeardown);
 
@@ -869,7 +797,9 @@ void LineGLTest::renderTeardown() {
     _color = GL::Renderbuffer{NoCreate};
 }
 
-// TODO this belongs to MeshTools
+/* A barebones utility for generating a line mesh. Embedded directly in the
+   test (as opposed to using something from MeshTools) to have it easier to
+   modify, debug and iterate on. */
 template<UnsignedInt dimensions> GL::Mesh generateLineMesh(Containers::StridedArrayView1D<const VectorTypeFor<dimensions, Float>> lineSegments) {
     struct Vertex {
         VectorTypeFor<dimensions, Float> previousPosition;
@@ -878,22 +808,22 @@ template<UnsignedInt dimensions> GL::Mesh generateLineMesh(Containers::StridedAr
     };
 
     enum: Int {
-        LineBegin = 1,
-        LineCap = 2
+        LineUp = 1,
+        LineBegin = 2,
+        LineCap = 4
     };
 
     CORRADE_INTERNAL_ASSERT(lineSegments.size() % 2 == 0);
     /* Not NoInit, because we're subsequently checking for NaNs */
     Containers::Array<Vertex> vertices{ValueInit, lineSegments.size()*2};
     for(std::size_t i = 0; i != lineSegments.size(); ++i) {
-        vertices[i*2 + 0].position = {lineSegments[i], Float((i % 2 ? 4 : LineBegin))};
-        vertices[i*2 + 1].position = {lineSegments[i], -Float((i % 2 ? 4 : LineBegin))};
+        vertices[i*2 + 0].position = {lineSegments[i], Float(LineUp|(i % 2 ? 0 : LineBegin))};
+        vertices[i*2 + 1].position = {lineSegments[i], Float(i % 2 ? 0 : LineBegin)};
     }
 
     /* Mark caps if it's the beginning, the end or the segments are disjoint */
     for(std::size_t i: {std::size_t{0}, std::size_t{1}, vertices.size() - 2, vertices.size() - 1}) {
-        vertices[i].position[dimensions] =
-            Math::sign(vertices[i].position[dimensions])*Float(Int(Math::abs(vertices[i].position[dimensions]))|LineCap);
+        vertices[i].position[dimensions] = Int(vertices[i].position[dimensions])|LineCap;
     }
     for(std::size_t i = 4; i < vertices.size(); i += 4) {
         /* Compare everything except the last component, which is always
@@ -902,8 +832,7 @@ template<UnsignedInt dimensions> GL::Mesh generateLineMesh(Containers::StridedAr
            VectorTypeFor<dimensions, Float>::pad(vertices[i].position))
             continue;
         for(std::size_t j: {i - 2, i - 1, i + 0, i + 1}) {
-            vertices[j].position[dimensions] =
-                Math::sign(vertices[j].position[dimensions])*Float(Int(Math::abs(vertices[j].position[dimensions]))|LineCap);
+            vertices[j].position[dimensions] = Int(vertices[j].position[dimensions])|LineCap;
         }
     }
 
@@ -914,7 +843,7 @@ template<UnsignedInt dimensions> GL::Mesh generateLineMesh(Containers::StridedAr
     }
     /* Prev positions for segment first vertices -- a neighbor segment, if any */
     for(std::size_t i = 4; i < Containers::arraySize(vertices); i += 4) {
-        if(Int(Math::abs(vertices[i].position[dimensions])) & LineCap)
+        if(Int(vertices[i].position[dimensions]) & LineCap)
             continue;
         vertices[i + 0].previousPosition = vertices[i + 1].previousPosition =
             VectorTypeFor<dimensions, Float>::pad(vertices[i - 4].position);
@@ -926,7 +855,7 @@ template<UnsignedInt dimensions> GL::Mesh generateLineMesh(Containers::StridedAr
     }
     /* Next positions for last vertices -- a neighbor segment, if any */
     for(std::size_t i = 2; i < Containers::arraySize(vertices) - 4; i += 4) {
-        if(Int(Math::abs(vertices[i].position[dimensions])) & LineCap)
+        if(Int(vertices[i].position[dimensions]) & LineCap)
             continue;
         vertices[i + 0].nextPosition = vertices[i + 1].nextPosition =
             VectorTypeFor<dimensions, Float>::pad(vertices[i + 4].position);
@@ -1051,8 +980,58 @@ template<LineGL2D::Flag flag> void LineGLTest::renderDefaults2D() {
         (DebugTools::CompareImageToFile{_manager}));
 }
 
-template<LineGL2D::Flag flag> void LineGLTest::render2D() {
-    auto&& data = Render2DData[testCaseInstanceId()];
+const Vector2 RenderLineCapsJoins2DLineData[]{
+    /* A single point (a zero-length line) */
+    {0.2f, 0.8f}, {0.2f, 0.8f},
+    /* A rotated point (i.e., a line of a very small length). Should ideally be
+       symmetric. */
+    /** @todo it isn't, why? */
+    {-0.4f, 0.15f}, {-0.4f + Math::TypeTraits<Float>::epsilon(), 0.15f + Math::TypeTraits<Float>::epsilon()},
+    /* A 90° join with a large length ratio. Caps should look the same on both
+       ends, independently on the length */
+    {-0.8f, 0.7f}, {-0.8f, -0.25f},
+    {-0.8f, -0.25f}, {-0.6f, -0.25f},
+    /* A four-segment line with a 60°, 120° and a 30° join. All should be
+       miters in the default setup. */
+    Vector2{0.25f, 0.3f} + Complex::rotation(-60.0_degf).transformVector(Vector2::yAxis(0.6f)) + Vector2::yAxis(-0.3f),
+        Vector2{0.25f, 0.3f} + Complex::rotation(-60.0_degf).transformVector(Vector2::yAxis(0.6f)),
+    Vector2{0.25f, 0.3f} + Complex::rotation(-60.0_degf).transformVector(Vector2::yAxis(0.6f)),
+        {0.2f, 0.35f},
+    {0.2f, 0.35f},
+        Vector2{0.25f, 0.3f} + Complex::rotation(60.0_degf).transformVector(Vector2::yAxis(0.6f)),
+    Vector2{0.25f, 0.3f} + Complex::rotation(60.0_degf).transformVector(Vector2::yAxis(0.6f)),
+        Vector2{0.25f, 0.3f} + Complex::rotation(60.0_degf).transformVector(Vector2::yAxis(0.6f)) +
+        Complex::rotation(30.0_degf).transformVector(Vector2::yAxis(-0.5f)),
+    /* A completely ordinary line segment, to test the case when everything
+       goes wrong */
+    {0.4f, -0.05f}, {0.8f, -0.05f},
+    /* A 180° join, with one part shorter. Should be always beveled, should not
+       overlap and should not disappear. */
+    /** @todo the other end disappears, fix */
+    {0.8f, -0.4f}, {0.0f, -0.4f},
+    {0.0f, -0.4f}, {0.8f, -0.40001f}, /** @todo otherwise disappears, fix */
+    /* A join where the other line touches the edge (either slightly above for
+       square/round caps, or slightly below for butt caps). The caps should not
+       get distorted in any way. */
+    /** @todo they do, fix */
+    {-0.45f, -0.8f}, {-0.7f, -0.8f},
+    {-0.7f, -0.8f},
+        Vector2{-0.7f, -0.8f} + Complex::rotation(60.0_degf).transformVector(Vector2::xAxis(0.2f)),
+    /* A join where the other line endpoint is inside the line. The caps should
+       not get distorted and it shouldn't overlap. */
+    /** @todo it's distorted heavily, fix */
+    {0.25f, -0.8f}, {0.0f, -0.8f},
+    {0.0f, -0.8f},
+        Vector2{0.0f, -0.8f} + Complex::rotation(60.0_degf).transformVector(Vector2::xAxis(0.01f)),
+    /* Like above, but with the first line short as well */
+    /** @todo here's both a heavy distortion and an overlap, fix */
+    {0.725f, -0.8f}, {0.7f, -0.8f},
+    {0.7f, -0.8f},
+        Vector2{0.7f, -0.8f} + Complex::rotation(60.0_degf).transformVector(Vector2::xAxis(0.01f))
+};
+
+template<LineGL2D::Flag flag> void LineGLTest::renderLineCapsJoins2D() {
+    auto&& data = RenderLineCapsJoins2DData[testCaseInstanceId()];
     setTestCaseDescription(data.name);
 
     #ifndef MAGNUM_TARGET_GLES2
@@ -1066,7 +1045,7 @@ template<LineGL2D::Flag flag> void LineGLTest::render2D() {
     }
     #endif
 
-    GL::Mesh lines = generateLineMesh<2>(data.lineSegments);
+    GL::Mesh lines = generateLineMesh<2>(RenderLineCapsJoins2DLineData);
 
     LineGL2D::Configuration configuration;
     configuration.setFlags(flag);
@@ -1077,7 +1056,6 @@ template<LineGL2D::Flag flag> void LineGLTest::render2D() {
         .setViewportSize(Vector2{RenderSize})
         .setWidth(data.width)
         .setSmoothness(data.smoothness)
-        // TODO use some transformation here
         .setColor(0x80808080_rgbaf);
     if(data.miterLengthLimit) shader.setMiterLengthLimit(*data.miterLengthLimit);
     if(data.miterAngleLimit) shader.setMiterAngleLimit(*data.miterAngleLimit);
@@ -1129,16 +1107,20 @@ template<LineGL2D::Flag flag> void LineGLTest::render2D() {
         (DebugTools::CompareImageToFile{_manager}));
 
     {
-        CORRADE_EXPECT_FAIL_IF(data.expectOverlap, "Rendered with overlapping geometry at the moment.");
+        /** @todo drop this when fixed */
+        CORRADE_EXPECT_FAIL("Rendered with overlapping geometry at the moment.");
         CORRADE_COMPARE(Math::max(image.pixels<Color4ub>().asContiguous()), 0x888888ff_rgba);
     }
 }
 
-void LineGLTest::render2DReversed() {
-    auto&& data = Render2DData[testCaseInstanceId()];
+void LineGLTest::renderLineCapsJoins2DReversed() {
+    auto&& data = RenderLineCapsJoins2DData[testCaseInstanceId()];
     setTestCaseDescription(data.name);
 
-    GL::Mesh lines = generateLineMesh<2>(stridedArrayView(data.lineSegments).flipped<0>());
+    /* As this verifies mainly the algorithm, there's no variant with UBOs --
+       those are sufficiently tested elsewhere */
+
+    GL::Mesh lines = generateLineMesh<2>(Containers::stridedArrayView(RenderLineCapsJoins2DLineData).flipped<0>());
 
     /* Enabling blending and a half-transparent color -- there should be no
        overlaps */
@@ -1186,16 +1168,18 @@ void LineGLTest::render2DReversed() {
         (DebugTools::CompareImageToFile{_manager, 1.0f, 0.0005f}));
 }
 
-void LineGLTest::render2DTransformed() {
-    auto&& data = Render2DData[testCaseInstanceId()];
+void LineGLTest::renderLineCapsJoins2DTransformed() {
+    auto&& data = RenderLineCapsJoins2DData[testCaseInstanceId()];
     setTestCaseDescription(data.name);
+
+    /* As this verifies mainly the algorithm, there's no variant with UBOs --
+       those are sufficiently tested elsewhere */
 
     const Matrix3 transformation = Matrix3::scaling({100.0f, 2.0f})*Matrix3::rotation(45.0_degf);
 
-    Containers::Array<Vector2> transformedLineSegments{NoInit, data.lineSegments.size()};
-    Utility::copy(data.lineSegments, transformedLineSegments);
-    for(Vector2& i: transformedLineSegments)
-        i = transformation.transformPoint(i);
+    Containers::Array<Vector2> transformedLineSegments{NoInit, Containers::arraySize(RenderLineCapsJoins2DLineData)};
+    for(std::size_t i = 0; i != transformedLineSegments.size(); ++i)
+        transformedLineSegments[i] = transformation.transformPoint(RenderLineCapsJoins2DLineData[i]);
 
     GL::Mesh lines = generateLineMesh<2>(transformedLineSegments);
 

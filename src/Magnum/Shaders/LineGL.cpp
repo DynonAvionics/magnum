@@ -199,7 +199,7 @@ template<UnsignedInt dimensions> typename LineGL<dimensions>::CompileState LineG
     if(!context.isExtensionSupported<GL::Extensions::ARB::explicit_attrib_location>(version))
     #endif
     {
-        out.bindAttributeLocation(Position::Location, "position"_s);
+        out.bindAttributeLocation(Position::Location, "positionPointMarkerComponent"_s);
         out.bindAttributeLocation(PreviousPosition::Location, "direction"_s);
         out.bindAttributeLocation(NextPosition::Location, "neighborDirection"_s);
         if(configuration.flags() & Flag::VertexColor)
@@ -338,7 +338,6 @@ template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setMite
         "Shaders::LineGL::setMiterLengthLimit(): expected a finite value greater than or equal to 1, got" << limit, *this);
     /* Calculate the half-angle from the length and supply a cosine of it to
        the shader */
-    !Debug{} << limit << Deg(2.0f*Math::asin(1.0f/limit)) << Math::cos(2.0f*Math::asin(1.0f/limit));
     setUniform(_miterLimitUniform, Math::cos(2.0f*Math::asin(1.0f/limit)));
     return *this;
 }
