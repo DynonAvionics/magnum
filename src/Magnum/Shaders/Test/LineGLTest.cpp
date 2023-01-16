@@ -78,7 +78,8 @@ struct LineGLTest: GL::OpenGLTester {
     template<UnsignedInt dimensions> void setObjectIdNotEnabled();
     template<UnsignedInt dimensions> void setWrongDrawOffset();
 
-    void renderSetup();
+    void renderSetupLarge();
+    void renderSetupSmall();
     void renderTeardown();
 
     template<LineGL2D::Flag flag = LineGL2D::Flag{}> void renderDefaults2D();
@@ -92,9 +93,6 @@ struct LineGLTest: GL::OpenGLTester {
 
     template<class T, LineGL2D::Flag flag = LineGL2D::Flag{}> void renderVertexColor2D();
     template<class T, LineGL3D::Flag flag = LineGL3D::Flag{}> void renderVertexColor3D();
-
-    void renderObjectIdSetup(); // TODO merge with renderSetup() now that we're ES2-less?
-    void renderObjectIdTeardown();
 
     template<LineGL2D::Flag flag = LineGL2D::Flag{}> void renderObjectId2D();
     template<LineGL3D::Flag flag = LineGL3D::Flag{}> void renderObjectId3D();
@@ -347,7 +345,7 @@ LineGLTest::LineGLTest() {
         // &LineGLTest::renderDefaults3D,
         // &LineGLTest::renderDefaults3D<LineGL3D::Flag::UniformBuffers>
         },
-        &LineGLTest::renderSetup,
+        &LineGLTest::renderSetupSmall,
         &LineGLTest::renderTeardown);
 
     /* MSVC needs explicit type due to default template args */
@@ -357,7 +355,21 @@ LineGLTest::LineGLTest() {
         &LineGLTest::renderLineCapsJoins2DReversed,
         &LineGLTest::renderLineCapsJoins2DTransformed},
         Containers::arraySize(RenderLineCapsJoins2DData),
-        &LineGLTest::renderSetup,
+        &LineGLTest::renderSetupLarge,
+        &LineGLTest::renderTeardown);
+
+    /* MSVC needs explicit type due to default template args */
+    addTests<LineGLTest>({
+        &LineGLTest::renderVertexColor2D<Color3>,
+        &LineGLTest::renderVertexColor2D<Color3, LineGL2D::Flag::UniformBuffers>,
+        &LineGLTest::renderVertexColor2D<Color4>,
+        &LineGLTest::renderVertexColor2D<Color4, LineGL2D::Flag::UniformBuffers>,
+        // &LineGLTest::renderVertexColor3D<Color3>,
+        // &LineGLTest::renderVertexColor3D<Color3, LineGL2D::Flag::UniformBuffers>,
+        // &LineGLTest::renderVertexColor3D<Color4>,
+        // &LineGLTest::renderVertexColor3D<Color4, LineGL2D::Flag::UniformBuffers>,
+        },
+        &LineGLTest::renderSetupSmall,
         &LineGLTest::renderTeardown);
 
     /* Load the plugins directly from the build tree. Otherwise they're either
@@ -717,9 +729,9 @@ template<UnsignedInt dimensions> void LineGLTest::setWrongDrawOffset() {
         "Shaders::LineGL::setDrawOffset(): draw offset 5 is out of bounds for 5 draws\n");
 }
 
-constexpr Vector2i RenderSize{128, 128};
+constexpr Vector2i RenderSizeLarge{128, 128};
 
-void LineGLTest::renderSetup() {
+void LineGLTest::renderSetupLarge() {
     /* Pick a color that's directly representable on RGBA4 as well to reduce
        artifacts */
     GL::Renderer::setClearColor(0x111111_rgbf);
@@ -728,8 +740,26 @@ void LineGLTest::renderSetup() {
     GL::Renderer::enable(GL::Renderer::Feature::FaceCulling);
 
     _color = GL::Renderbuffer{};
-    _color.setStorage(GL::RenderbufferFormat::RGBA8, RenderSize);
-    _framebuffer = GL::Framebuffer{{{}, RenderSize}};
+    _color.setStorage(GL::RenderbufferFormat::RGBA8, RenderSizeLarge);
+    _framebuffer = GL::Framebuffer{{{}, RenderSizeLarge}};
+    _framebuffer.attachRenderbuffer(GL::Framebuffer::ColorAttachment{0}, _color)
+        .clear(GL::FramebufferClear::Color)
+        .bind();
+}
+
+constexpr Vector2i RenderSizeSmall{80, 80};
+
+void LineGLTest::renderSetupSmall() {
+    /* Pick a color that's directly representable on RGBA4 as well to reduce
+       artifacts */
+    GL::Renderer::setClearColor(0x111111_rgbf);
+    /* The geometry should be generated in CCW order, enable face culling to
+       verify that */
+    GL::Renderer::enable(GL::Renderer::Feature::FaceCulling);
+
+    _color = GL::Renderbuffer{};
+    _color.setStorage(GL::RenderbufferFormat::RGBA8, RenderSizeSmall);
+    _framebuffer = GL::Framebuffer{{{}, RenderSizeSmall}};
     _framebuffer.attachRenderbuffer(GL::Framebuffer::ColorAttachment{0}, _color)
         .clear(GL::FramebufferClear::Color)
         .bind();
@@ -874,7 +904,7 @@ template<LineGL2D::Flag flag> void LineGLTest::renderDefaults2D() {
 
     LineGL2D shader{LineGL2D::Configuration{}
         .setFlags(flag)};
-    shader.setViewportSize(Vector2{RenderSize});
+    shader.setViewportSize(Vector2{RenderSizeSmall});
 
     /* Enabling blending and a half-transparent color -- there should be no
        overlaps */
@@ -987,7 +1017,7 @@ template<LineGL2D::Flag flag> void LineGLTest::renderLineCapsJoins2D() {
     if(data.capStyle) configuration.setCapStyle(*data.capStyle);
     if(data.joinStyle) configuration.setJoinStyle(*data.joinStyle);
     LineGL2D shader{configuration};
-    shader.setViewportSize(Vector2{RenderSize});
+    shader.setViewportSize(Vector2{RenderSizeLarge});
 
     /* Enabling blending and a half-transparent color -- there should be no
        overlaps */
@@ -1076,7 +1106,7 @@ void LineGLTest::renderLineCapsJoins2DReversed() {
     if(data.joinStyle) configuration.setJoinStyle(*data.joinStyle);
     LineGL2D shader{configuration};
     shader
-        .setViewportSize(Vector2{RenderSize})
+        .setViewportSize(Vector2{RenderSizeLarge})
         .setWidth(data.width)
         .setSmoothness(data.smoothness)
         .setColor(0x80808080_rgbaf);
@@ -1130,7 +1160,7 @@ void LineGLTest::renderLineCapsJoins2DTransformed() {
     if(data.joinStyle) configuration.setJoinStyle(*data.joinStyle);
     LineGL2D shader{configuration};
     shader
-        .setViewportSize(Vector2{RenderSize})
+        .setViewportSize(Vector2{RenderSizeLarge})
         .setWidth(data.width)
         .setSmoothness(data.smoothness)
         .setTransformationProjectionMatrix(transformation.inverted())
@@ -1162,6 +1192,89 @@ void LineGLTest::renderLineCapsJoins2DTransformed() {
         /* Dropping the alpha channel, as it's always 1.0 */
         Containers::arrayCast<Color3ub>(image.pixels<Color4ub>()),
         Utility::Path::join({SHADERS_TEST_DIR, "LineTestFiles", data.expected}),
+        (DebugTools::CompareImageToFile{_manager}));
+}
+
+template<class T, LineGL2D::Flag flag> void LineGLTest::renderVertexColor2D() {
+    if(flag == LineGL2D::Flag::UniformBuffers) {
+        setTestCaseTemplateName({T::Size == 3 ? "Color3" : "Color4", "Flag::UniformBuffers"});
+
+        #ifndef MAGNUM_TARGET_GLES
+        if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
+            CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
+        #endif
+    } else {
+        setTestCaseTemplateName(T::Size == 3 ? "Color3" : "Color4");
+    }
+
+    GL::Mesh lines = generateLineMesh({
+        {-0.8f, 0.5f}, {-0.5f, -0.5f},
+        {-0.5f, -0.5f}, {0.0f, 0.0f},
+        {0.0f, 0.0f}, {0.5f, -0.5f},
+        {0.5f, -0.5f}, {0.8f, 0.5f}
+    });
+
+    /* Each line segment from above is four points */
+    T colors[]{
+        0xff0000_rgbf, 0xff0000_rgbf, 0xffff00_rgbf, 0xffff00_rgbf,
+        0xffff00_rgbf, 0xffff00_rgbf, 0x00ffff_rgbf, 0x00ffff_rgbf,
+        0x00ffff_rgbf, 0x00ffff_rgbf, 0x00ff00_rgbf, 0x00ff00_rgbf,
+        0x00ff00_rgbf, 0x00ff00_rgbf, 0x0000ff_rgbf, 0x0000ff_rgbf
+    };
+    if(std::is_same<T, Color3>::value)
+        lines.addVertexBuffer(GL::Buffer{colors}, 0, LineGL2D::Color3{});
+    else
+        lines.addVertexBuffer(GL::Buffer{colors}, 0, LineGL2D::Color4{});
+
+    LineGL2D shader{LineGL2D::Configuration{}
+        .setFlags(LineGL2D::Flag::VertexColor|flag)
+        .setCapStyle(LineCapStyle::Triangle)};
+    shader.setViewportSize(Vector2{RenderSizeSmall});
+
+    /* Set background to blue as well so we don't have too much aliasing */
+    GL::Renderer::setClearColor(0x000080_rgbf);
+    _framebuffer.clear(GL::FramebufferClear::Color);
+
+    if(flag == LineGL2D::Flag{}) {
+        shader
+            /* Background should stay blue, foreground should have no blue */
+            .setBackgroundColor(0x000080_rgbf)
+            .setColor(0x999900_rgbf)
+            .setWidth(4.0f)
+            .setSmoothness(1.0f)
+            .draw(lines);
+    } else if(flag == LineGL2D::Flag::UniformBuffers) {
+        GL::Buffer transformationProjectionUniform{GL::Buffer::TargetHint::Uniform, {
+            TransformationProjectionUniform2D{}
+        }};
+        GL::Buffer drawUniform{GL::Buffer::TargetHint::Uniform, {
+            LineDrawUniform{}
+        }};
+        GL::Buffer materialUniform{GL::Buffer::TargetHint::Uniform, {
+            LineMaterialUniform{}
+                /* Background should stay blue, foreground should have no blue */
+                .setBackgroundColor(0x000080_rgbf)
+                .setColor(0x999900_rgbf)
+                .setWidth(4.0f)
+                .setSmoothness(1.0f)
+        }};
+        shader
+            .bindTransformationProjectionBuffer(transformationProjectionUniform)
+            .bindDrawBuffer(drawUniform)
+            .bindMaterialBuffer(materialUniform)
+            .draw(lines);
+    } else CORRADE_INTERNAL_ASSERT_UNREACHABLE();
+
+    MAGNUM_VERIFY_NO_GL_ERROR();
+
+    if(!(_manager.loadState("AnyImageImporter") & PluginManager::LoadState::Loaded) ||
+       !(_manager.loadState("TgaImporter") & PluginManager::LoadState::Loaded))
+        CORRADE_SKIP("AnyImageImporter / TgaImporter plugins not found.");
+
+    CORRADE_COMPARE_WITH(
+        /* Dropping the alpha channel, as it's always 1.0 */
+        Containers::arrayCast<Color3ub>(_framebuffer.read(_framebuffer.viewport(), {PixelFormat::RGBA8Unorm}).pixels<Color4ub>()),
+        Utility::Path::join(SHADERS_TEST_DIR, "LineTestFiles/vertex-color2D.tga"),
         (DebugTools::CompareImageToFile{_manager}));
 }
 

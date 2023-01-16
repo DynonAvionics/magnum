@@ -382,13 +382,11 @@ void main() {
     highp const vec2 screenspaceLineDirectionNormalized = screenspaceLineDirectionLength == 0.0 ? vec2(1.0, 0.0) : screenspaceLineDirection/screenspaceLineDirectionLength;
     highp const vec2 screenspaceEdgeDirectionNormalized = perpendicular(screenspaceLineDirectionNormalized);
 
-    /* Line width includes also twice the smoothness radius, some extra padding
-       on top, and is rounded to whole pixels. So for the edge distance we need
-       half of it. */
-    // TODO ref the paper here; actually just drop all that, smoothstep FTW
+    /* Line width includes also twice the smoothness (because it's a radius
+       instead of a diameter, and is on both sides of the line), and is rounded
+       to whole pixels. So for the edge distance we need half of it. */
     highp const float edgeDistance = ceil(width + 2.0*smoothness)*0.5;
     #ifdef CAP_STYLE_BUTT
-    // TODO sync with edgeDistance once it's changed
     highp const float capDistance = ceil(2.0*smoothness)*0.5;
     #elif defined(CAP_STYLE_SQUARE) || defined(CAP_STYLE_ROUND) || defined(CAP_STYLE_TRIANGLE)
     highp const float capDistance = edgeDistance;
