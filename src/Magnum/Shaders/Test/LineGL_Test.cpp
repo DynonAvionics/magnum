@@ -47,9 +47,6 @@ struct LineGL_Test: TestSuite::Tester {
     void debugFlag();
     void debugFlags();
     void debugFlagsSupersets();
-
-    void debugCapStyle();
-    void debugJoinStyle();
 };
 
 LineGL_Test::LineGL_Test() {
@@ -65,10 +62,7 @@ LineGL_Test::LineGL_Test() {
 
               &LineGL_Test::debugFlag,
               &LineGL_Test::debugFlags,
-              &LineGL_Test::debugFlagsSupersets,
-
-              &LineGL_Test::debugCapStyle,
-              &LineGL_Test::debugJoinStyle});
+              &LineGL_Test::debugFlagsSupersets});
 }
 
 template<UnsignedInt dimensions> void LineGL_Test::constructConfigurationDefault() {
@@ -76,10 +70,8 @@ template<UnsignedInt dimensions> void LineGL_Test::constructConfigurationDefault
 
     typename LineGL<dimensions>::Configuration configuration;
     CORRADE_COMPARE(configuration.flags(), typename LineGL<dimensions>::Flags{});
-    #ifndef MAGNUM_TARGET_GLES2
     CORRADE_COMPARE(configuration.materialCount(), 1);
     CORRADE_COMPARE(configuration.drawCount(), 1);
-    #endif
 }
 
 template<UnsignedInt dimensions> void LineGL_Test::constructConfigurationSetters() {
@@ -87,16 +79,11 @@ template<UnsignedInt dimensions> void LineGL_Test::constructConfigurationSetters
 
     typename LineGL<dimensions>::Configuration configuration = typename LineGL<dimensions>::Configuration{}
         .setFlags(LineGL<dimensions>::Flag::VertexColor)
-        #ifndef MAGNUM_TARGET_GLES2
         .setMaterialCount(17)
-        .setDrawCount(266)
-        #endif
-        ;
+        .setDrawCount(266);
     CORRADE_COMPARE(configuration.flags(), LineGL<dimensions>::Flag::VertexColor);
-    #ifndef MAGNUM_TARGET_GLES2
     CORRADE_COMPARE(configuration.materialCount(), 17);
     CORRADE_COMPARE(configuration.drawCount(), 266);
-    #endif
 }
 
 template<UnsignedInt dimensions> void LineGL_Test::constructNoCreate() {
@@ -131,36 +118,19 @@ void LineGL_Test::debugFlags() {
 }
 
 void LineGL_Test::debugFlagsSupersets() {
-    #ifndef MAGNUM_TARGET_GLES2
     /* InstancedObjectId is a superset of ObjectId so only one should be
        printed */
     {
         std::ostringstream out;
         Debug{&out} << (LineGL3D::Flag::ObjectId|LineGL3D::Flag::InstancedObjectId);
         CORRADE_COMPARE(out.str(), "Shaders::LineGL::Flag::InstancedObjectId\n");
-    }
-    #endif
 
-    #ifndef MAGNUM_TARGET_GLES2
     /* MultiDraw is a superset of UniformBuffers so only one should be printed */
-    {
+    } {
         std::ostringstream out;
         Debug{&out} << (LineGL3D::Flag::MultiDraw|LineGL3D::Flag::UniformBuffers);
         CORRADE_COMPARE(out.str(), "Shaders::LineGL::Flag::MultiDraw\n");
     }
-    #endif
-}
-
-void LineGL_Test::debugCapStyle() {
-    std::ostringstream out;
-    Debug{&out} << LineGL3D::CapStyle::Square << LineGL3D::CapStyle(0xb0);
-    CORRADE_COMPARE(out.str(), "Shaders::LineGL::CapStyle::Square Shaders::LineGL::CapStyle(0xb0)\n");
-}
-
-void LineGL_Test::debugJoinStyle() {
-    std::ostringstream out;
-    Debug{&out} << LineGL3D::JoinStyle::Bevel << LineGL3D::JoinStyle(0xb0);
-    CORRADE_COMPARE(out.str(), "Shaders::LineGL::JoinStyle::Bevel Shaders::LineGL::JoinStyle(0xb0)\n");
 }
 
 }}}}

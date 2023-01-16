@@ -24,9 +24,13 @@
 */
 
 #include <new>
+#include <sstream>
 #include <Corrade/TestSuite/Tester.h>
+#include <Corrade/Utility/DebugStl.h>
+#include <Corrade/Utility/FormatStl.h>
 
 #include "Magnum/Shaders/Line.h"
+#include "Magnum/Shaders/Implementation/lineMiterLimit.h"
 
 namespace Magnum { namespace Shaders { namespace Test { namespace {
 
@@ -43,6 +47,36 @@ struct LineTest: TestSuite::Tester {
     void materialUniformConstructDefault();
     void materialUniformConstructNoInit();
     void materialUniformSetters();
+
+    void materialUniformSetMiterLengthLimitInvalid();
+    void materialUniformSetMiterAngleLimitInvalid();
+
+    void debugCapStyle();
+    void debugJoinStyle();
+};
+
+using namespace Math::Literals;
+
+const struct {
+    const char* name;
+    Float limit;
+    const char* message;
+} MaterialUniformSetMiterLengthLimitInvalidData[]{
+    {"too short", 0.9997f,
+        "expected a finite value greater than or equal to 1, got 0.9997"},
+    {"too long", Constants::inf(),
+        "expected a finite value greater than or equal to 1, got inf"},
+};
+
+const struct {
+    const char* name;
+    Rad limit;
+    const char* message;
+} MaterialUniformSetMiterAngleLimitInvalidData[]{
+    {"too small", 0.0_degf,
+        "expected a value greater than 0° and less than or equal to 180°, got 0°"},
+    {"too large", 180.1_degf,
+        "expected a value greater than 0° and less than or equal to 180°, got 180.1°"}
 };
 
 LineTest::LineTest() {
@@ -57,9 +91,16 @@ LineTest::LineTest() {
               &LineTest::materialUniformConstructDefault,
               &LineTest::materialUniformConstructNoInit,
               &LineTest::materialUniformSetters});
-}
 
-using namespace Math::Literals;
+    addInstancedTests({&LineTest::materialUniformSetMiterLengthLimitInvalid},
+        Containers::arraySize(MaterialUniformSetMiterLengthLimitInvalidData));
+
+    addInstancedTests({&LineTest::materialUniformSetMiterAngleLimitInvalid},
+        Containers::arraySize(MaterialUniformSetMiterAngleLimitInvalidData));
+
+    addTests({&LineTest::debugCapStyle,
+              &LineTest::debugJoinStyle});
+}
 
 template<class> struct UniformTraits;
 template<> struct UniformTraits<LineDrawUniform> {
@@ -148,13 +189,29 @@ void LineTest::drawUniformMaterialIdPacking() {
 void LineTest::materialUniformConstructDefault() {
     LineMaterialUniform a;
     LineMaterialUniform b{DefaultInit};
+    CORRADE_COMPARE(a.backgroundColor, 0x00000000_rgbaf);
+    CORRADE_COMPARE(b.backgroundColor, 0x00000000_rgbaf);
     CORRADE_COMPARE(a.color, 0xffffffff_rgbaf);
     CORRADE_COMPARE(b.color, 0xffffffff_rgbaf);
+    CORRADE_COMPARE(a.width, 1.0f);
+    CORRADE_COMPARE(b.width, 1.0f);
+    CORRADE_COMPARE(a.smoothness, 0.0f);
+    CORRADE_COMPARE(b.smoothness, 0.0f);
+    CORRADE_COMPARE(a.miterLimit, Implementation::lineMiterLengthLimit("", 4.0f));
+    CORRADE_COMPARE(b.miterLimit, Implementation::lineMiterLengthLimit("", 4.0f));
 
     constexpr LineMaterialUniform ca;
     constexpr LineMaterialUniform cb{DefaultInit};
+    CORRADE_COMPARE(ca.backgroundColor, 0x00000000_rgbaf);
+    CORRADE_COMPARE(cb.backgroundColor, 0x00000000_rgbaf);
     CORRADE_COMPARE(ca.color, 0xffffffff_rgbaf);
     CORRADE_COMPARE(cb.color, 0xffffffff_rgbaf);
+    CORRADE_COMPARE(ca.width, 1.0f);
+    CORRADE_COMPARE(cb.width, 1.0f);
+    CORRADE_COMPARE(ca.smoothness, 0.0f);
+    CORRADE_COMPARE(cb.smoothness, 0.0f);
+    CORRADE_COMPARE(ca.miterLimit, Implementation::lineMiterLengthLimit("", 4.0f));
+    CORRADE_COMPARE(cb.miterLimit, Implementation::lineMiterLengthLimit("", 4.0f));
 
     CORRADE_VERIFY(std::is_nothrow_default_constructible<LineDrawUniform>::value);
     CORRADE_VERIFY(std::is_nothrow_constructible<LineDrawUniform, DefaultInitT>::value);
@@ -167,6 +224,7 @@ void LineTest::materialUniformConstructNoInit() {
     /* Testing only some fields, should be enough */
     LineMaterialUniform a;
     a.color = 0x354565fc_rgbaf;
+    a.smoothness = 7.0f;
 
     new(&a) LineMaterialUniform{NoInit};
     {
@@ -177,6 +235,7 @@ void LineTest::materialUniformConstructNoInit() {
         CORRADE_EXPECT_FAIL("GCC 6.1+ misoptimizes and overwrites the value.");
         #endif
         CORRADE_COMPARE(a.color, 0x354565fc_rgbaf);
+        CORRADE_COMPARE(a.smoothness, 7.0f);
     }
 
     CORRADE_VERIFY(std::is_nothrow_constructible<LineMaterialUniform, NoInitT>::value);
@@ -187,8 +246,55 @@ void LineTest::materialUniformConstructNoInit() {
 
 void LineTest::materialUniformSetters() {
     LineMaterialUniform a;
-    a.setColor(0x354565fc_rgbaf);
+    a.setBackgroundColor(0x01020304_rgbaf)
+     .setColor(0x354565fc_rgbaf)
+     .setWidth(2.5f)
+     .setSmoothness(7.0f)
+     .setMiterLengthLimit(25.0f);
+    CORRADE_COMPARE(a.backgroundColor, 0x01020304_rgbaf);
     CORRADE_COMPARE(a.color, 0x354565fc_rgbaf);
+    CORRADE_COMPARE(a.width, 2.5f);
+    CORRADE_COMPARE(a.smoothness, 7.0f);
+    CORRADE_COMPARE(a.miterLimit, 0.9968f);
+
+    a.setMiterAngleLimit(35.0_degf);
+    CORRADE_COMPARE(a.miterLimit, 0.819152f);
+}
+
+void LineTest::materialUniformSetMiterLengthLimitInvalid() {
+    auto&& data = MaterialUniformSetMiterLengthLimitInvalidData[testCaseInstanceId()];
+    setTestCaseDescription(data.name);
+
+    LineMaterialUniform a;
+
+    std::ostringstream out;
+    Error redirectError{&out};
+    a.setMiterLengthLimit(data.limit);
+    CORRADE_COMPARE(out.str(), Utility::formatString("Shaders::LineMaterialUniform::setMiterLengthLimit(): {}\n", data.message));
+}
+
+void LineTest::materialUniformSetMiterAngleLimitInvalid() {
+    auto&& data = MaterialUniformSetMiterAngleLimitInvalidData[testCaseInstanceId()];
+    setTestCaseDescription(data.name);
+
+    LineMaterialUniform a;
+
+    std::ostringstream out;
+    Error redirectError{&out};
+    a.setMiterAngleLimit(data.limit);
+    CORRADE_COMPARE(out.str(), Utility::formatString("Shaders::LineMaterialUniform::setMiterAngleLimit(): {}\n", data.message));
+}
+
+void LineTest::debugCapStyle() {
+    std::ostringstream out;
+    Debug{&out} << LineCapStyle::Square << LineCapStyle(0xb0);
+    CORRADE_COMPARE(out.str(), "Shaders::LineCapStyle::Square Shaders::LineCapStyle(0xb0)\n");
+}
+
+void LineTest::debugJoinStyle() {
+    std::ostringstream out;
+    Debug{&out} << LineJoinStyle::Bevel << LineJoinStyle(0xb0);
+    CORRADE_COMPARE(out.str(), "Shaders::LineJoinStyle::Bevel Shaders::LineJoinStyle(0xb0)\n");
 }
 
 }}}}

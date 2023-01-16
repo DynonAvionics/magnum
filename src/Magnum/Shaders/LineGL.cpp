@@ -26,21 +26,19 @@
 #include "LineGL.h"
 
 #include <Corrade/Containers/EnumSet.hpp>
+#include <Corrade/Utility/Format.h>
 #include <Corrade/Utility/Resource.h>
 
+#include "Magnum/GL/Buffer.h"
 #include "Magnum/GL/Context.h"
 #include "Magnum/GL/Extensions.h"
 #include "Magnum/GL/Shader.h"
 #include "Magnum/Math/Color.h"
 #include "Magnum/Math/Matrix3.h"
 #include "Magnum/Math/Matrix4.h"
+#include "Magnum/Shaders/Line.h"
 #include "Magnum/Shaders/Implementation/CreateCompatibilityShader.h"
-
-#ifndef MAGNUM_TARGET_GLES2
-#include <Corrade/Utility/FormatStl.h>
-
-#include "Magnum/GL/Buffer.h"
-#endif
+#include "Magnum/Shaders/Implementation/lineMiterLimit.h"
 
 namespace Magnum { namespace Shaders {
 
@@ -54,7 +52,6 @@ namespace {
         TextureUnit = 7
     };
 
-    #ifndef MAGNUM_TARGET_GLES2
     enum: Int {
         /* Not using the zero binding to avoid conflicts with
            ProjectionBufferBinding from other shaders which can likely stay
@@ -63,22 +60,19 @@ namespace {
         DrawBufferBinding = 2,
         MaterialBufferBinding = 3
     };
-    #endif
 }
 
 template<UnsignedInt dimensions> typename LineGL<dimensions>::CompileState LineGL<dimensions>::compile(const Configuration& configuration) {
-    #ifndef MAGNUM_TARGET_GLES2
     CORRADE_ASSERT(!(configuration.flags() >= Flag::UniformBuffers) || configuration.materialCount(),
         "Shaders::LineGL: material count can't be zero", CompileState{NoCreate});
     CORRADE_ASSERT(!(configuration.flags() >= Flag::UniformBuffers) || configuration.drawCount(),
         "Shaders::LineGL: draw count can't be zero", CompileState{NoCreate});
-    #endif
 
     #ifndef MAGNUM_TARGET_GLES
+    MAGNUM_ASSERT_GL_EXTENSION_SUPPORTED(GL::Extensions::EXT::gpu_shader4);
     if(configuration.flags() >= Flag::UniformBuffers)
         MAGNUM_ASSERT_GL_EXTENSION_SUPPORTED(GL::Extensions::ARB::uniform_buffer_object);
     #endif
-    #ifndef MAGNUM_TARGET_GLES2
     if(configuration.flags() >= Flag::MultiDraw) {
         #ifndef MAGNUM_TARGET_GLES
         MAGNUM_ASSERT_GL_EXTENSION_SUPPORTED(GL::Extensions::ARB::shader_draw_parameters);
@@ -88,7 +82,6 @@ template<UnsignedInt dimensions> typename LineGL<dimensions>::CompileState LineG
         MAGNUM_ASSERT_GL_EXTENSION_SUPPORTED(GL::Extensions::WEBGL::multi_draw);
         #endif
     }
-    #endif
 
     #ifdef MAGNUM_BUILD_STATIC
     /* Import resources on static build, if not already */
@@ -99,36 +92,34 @@ template<UnsignedInt dimensions> typename LineGL<dimensions>::CompileState LineG
 
     const GL::Context& context = GL::Context::current();
 
-    const GL::Version version = context.supportedVersion({
-        #ifndef MAGNUM_TARGET_GLES
-        GL::Version::GL320, GL::Version::GL310, GL::Version::GL300, GL::Version::GL210
-        #else
-        GL::Version::GLES300, GL::Version::GLES200
-        #endif
-    });
+    #ifndef MAGNUM_TARGET_GLES
+    const GL::Version version = context.supportedVersion({GL::Version::GL320, GL::Version::GL310, GL::Version::GL300, GL::Version::GL210});
+    #else
+    constexpr GL::Version version = GL::Version::GLES300;
+    #endif
 
     /* Cap and join style is needed by both the vertex and fragment shader,
        prepare their defines just once for both */
     Containers::StringView capStyleDefine, joinStyleDefine;
     switch(configuration.capStyle()) {
-        case CapStyle::Butt:
+        case LineCapStyle::Butt:
             capStyleDefine = "#define CAP_STYLE_BUTT\n"_s;
             break;
-        case CapStyle::Square:
+        case LineCapStyle::Square:
             capStyleDefine = "#define CAP_STYLE_SQUARE\n"_s;
             break;
-        case CapStyle::Round:
+        case LineCapStyle::Round:
             capStyleDefine = "#define CAP_STYLE_ROUND\n"_s;
             break;
-        case CapStyle::Triangle:
+        case LineCapStyle::Triangle:
             capStyleDefine = "#define CAP_STYLE_TRIANGLE\n"_s;
             break;
     }
     switch(configuration.joinStyle()) {
-        case JoinStyle::Miter:
+        case LineJoinStyle::Miter:
             joinStyleDefine = "#define JOIN_STYLE_MITER\n"_s;
             break;
-        case JoinStyle::Bevel:
+        case LineJoinStyle::Bevel:
             joinStyleDefine = "#define JOIN_STYLE_BEVEL\n"_s;
             break;
     }
@@ -140,19 +131,17 @@ template<UnsignedInt dimensions> typename LineGL<dimensions>::CompileState LineG
         .addSource(joinStyleDefine)
         .addSource(configuration.flags() & Flag::VertexColor ? "#define VERTEX_COLOR\n"_s : ""_s)
         .addSource(dimensions == 2 ? "#define TWO_DIMENSIONS\n"_s : "#define THREE_DIMENSIONS\n"_s)
-        #ifndef MAGNUM_TARGET_GLES2
         .addSource(configuration.flags() >= Flag::InstancedObjectId ? "#define INSTANCED_OBJECT_ID\n"_s : ""_s)
-        #endif
         .addSource(configuration.flags() & Flag::InstancedTransformation ? "#define INSTANCED_TRANSFORMATION\n"_s : ""_s);
-    #ifndef MAGNUM_TARGET_GLES2
     if(configuration.flags() >= Flag::UniformBuffers) {
-        vert.addSource(Utility::formatString(
+        vert.addSource(Utility::format(
             "#define UNIFORM_BUFFERS\n"
-            "#define DRAW_COUNT {}\n",
-            configuration.drawCount()));
+            "#define DRAW_COUNT {}\n"
+            "#define MATERIAL_COUNT {}\n",
+            configuration.drawCount(),
+            configuration.materialCount()));
         vert.addSource(configuration.flags() >= Flag::MultiDraw ? "#define MULTI_DRAW\n"_s : ""_s);
     }
-    #endif
     vert.addSource(rs.getString("generic.glsl"_s))
         .addSource(rs.getString("Line.vert"_s))
         .submitCompile();
@@ -161,14 +150,10 @@ template<UnsignedInt dimensions> typename LineGL<dimensions>::CompileState LineG
     frag.addSource(capStyleDefine)
         .addSource(joinStyleDefine)
         .addSource(configuration.flags() & Flag::VertexColor ? "#define VERTEX_COLOR\n"_s : ""_s)
-        #ifndef MAGNUM_TARGET_GLES2
         .addSource(configuration.flags() & Flag::ObjectId ? "#define OBJECT_ID\n"_s : ""_s)
-        .addSource(configuration.flags() >= Flag::InstancedObjectId ? "#define INSTANCED_OBJECT_ID\n"_s : ""_s)
-        #endif
-        ;
-    #ifndef MAGNUM_TARGET_GLES2
+        .addSource(configuration.flags() >= Flag::InstancedObjectId ? "#define INSTANCED_OBJECT_ID\n"_s : ""_s);
     if(configuration.flags() >= Flag::UniformBuffers) {
-        frag.addSource(Utility::formatString(
+        frag.addSource(Utility::format(
             "#define UNIFORM_BUFFERS\n"
             "#define DRAW_COUNT {}\n"
             "#define MATERIAL_COUNT {}\n",
@@ -176,7 +161,6 @@ template<UnsignedInt dimensions> typename LineGL<dimensions>::CompileState LineG
             configuration.materialCount()));
         frag.addSource(configuration.flags() >= Flag::MultiDraw ? "#define MULTI_DRAW\n"_s : ""_s);
     }
-    #endif
     frag.addSource(rs.getString("generic.glsl"_s))
         .addSource(rs.getString("Line.frag"_s))
         .submitCompile();
@@ -185,33 +169,26 @@ template<UnsignedInt dimensions> typename LineGL<dimensions>::CompileState LineG
     out._flags = configuration.flags();
     out._capStyle = configuration.capStyle();
     out._joinStyle = configuration.joinStyle();
-    #ifndef MAGNUM_TARGET_GLES2
     out._materialCount = configuration.materialCount();
     out._drawCount = configuration.drawCount();
-    #endif
 
     out.attachShaders({vert, frag});
 
     /* ES3 has this done in the shader directly and doesn't even provide
        bindFragmentDataLocation() */
-    #if !defined(MAGNUM_TARGET_GLES) || defined(MAGNUM_TARGET_GLES2)
     #ifndef MAGNUM_TARGET_GLES
-    if(!context.isExtensionSupported<GL::Extensions::ARB::explicit_attrib_location>(version))
-    #endif
-    {
+    if(!context.isExtensionSupported<GL::Extensions::ARB::explicit_attrib_location>(version)) {
         out.bindAttributeLocation(Position::Location, "positionPointMarkerComponent"_s);
         out.bindAttributeLocation(PreviousPosition::Location, "direction"_s);
         out.bindAttributeLocation(NextPosition::Location, "neighborDirection"_s);
         if(configuration.flags() & Flag::VertexColor)
             out.bindAttributeLocation(Color3::Location, "vertexColor"_s); /* Color4 is the same */
-        #ifndef MAGNUM_TARGET_GLES2
         if(configuration.flags() & Flag::ObjectId) {
             out.bindFragmentDataLocation(ColorOutput, "color"_s);
             out.bindFragmentDataLocation(ObjectIdOutput, "objectId"_s);
         }
         if(configuration.flags() >= Flag::InstancedObjectId)
             out.bindAttributeLocation(ObjectId::Location, "instanceObjectId"_s);
-        #endif
         if(configuration.flags() & Flag::InstancedTransformation)
             out.bindAttributeLocation(TransformationMatrix::Location, "instancedTransformationMatrix"_s);
     }
@@ -239,21 +216,18 @@ template<UnsignedInt dimensions> LineGL<dimensions>::LineGL(CompileState&& state
     #endif
     {
         _viewportSizeUniform = uniformLocation("viewportSize"_s);
-        #ifndef MAGNUM_TARGET_GLES2
         if(_flags >= Flag::UniformBuffers) {
-            if(_drawCount > 1) _drawOffsetUniform = uniformLocation("drawOffset"_s);
-        } else
-        #endif
-        {
+            if(_drawCount > 1)
+                _drawOffsetUniform = uniformLocation("drawOffset"_s);
+        } else {
             _transformationProjectionMatrixUniform = uniformLocation("transformationProjectionMatrix"_s);
             _widthUniform = uniformLocation("width"_s);
             _smoothnessUniform = uniformLocation("smoothness"_s);
             _miterLimitUniform = uniformLocation("miterLimit"_s);
             _backgroundColorUniform = uniformLocation("backgroundColor"_s);
             _colorUniform = uniformLocation("color"_s);
-            #ifndef MAGNUM_TARGET_GLES2
-            if(_flags & Flag::ObjectId) _objectIdUniform = uniformLocation("objectId"_s);
-            #endif
+            if(_flags & Flag::ObjectId)
+                _objectIdUniform = uniformLocation("objectId"_s);
         }
     }
 
@@ -261,23 +235,18 @@ template<UnsignedInt dimensions> LineGL<dimensions>::LineGL(CompileState&& state
     if(!context.isExtensionSupported<GL::Extensions::ARB::shading_language_420pack>(version))
     #endif
     {
-        #ifndef MAGNUM_TARGET_GLES2
         if(_flags >= Flag::UniformBuffers) {
             setUniformBlockBinding(uniformBlockIndex("TransformationProjection"_s), TransformationProjectionBufferBinding);
             setUniformBlockBinding(uniformBlockIndex("Draw"_s), DrawBufferBinding);
             setUniformBlockBinding(uniformBlockIndex("Material"_s), MaterialBufferBinding);
         }
-        #endif
     }
 
     /* Set defaults in OpenGL ES (for desktop they are set in shader code itself) */
     #ifdef MAGNUM_TARGET_GLES
-    #ifndef MAGNUM_TARGET_GLES2
     if(_flags >= Flag::UniformBuffers) {
         /* Draw offset is zero by default */
-    } else
-    #endif
-    {
+    } else {
         setTransformationProjectionMatrix(MatrixTypeFor<dimensions, Float>{Math::IdentityInit});
         setWidth(1.0f);
         /* Smoothness is zero by default */
@@ -295,86 +264,64 @@ template<UnsignedInt dimensions> LineGL<dimensions>::LineGL(const Configuration&
 
 template<UnsignedInt dimensions> LineGL<dimensions>::LineGL(NoInitT) {}
 
-template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setTransformationProjectionMatrix(const MatrixTypeFor<dimensions, Float>& matrix) {
-    #ifndef MAGNUM_TARGET_GLES2
-    CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
-        "Shaders::LineGL::setTransformationProjectionMatrix(): the shader was created with uniform buffers enabled", *this);
-    #endif
-    setUniform(_transformationProjectionMatrixUniform, matrix);
-    return *this;
-}
-
 template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setViewportSize(const Vector2& size) {
     setUniform(_viewportSizeUniform, size);
     return *this;
 }
 
-template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setWidth(const Float width) {
-    #ifndef MAGNUM_TARGET_GLES2
+template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setTransformationProjectionMatrix(const MatrixTypeFor<dimensions, Float>& matrix) {
     CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
-        "Shaders::LineGL::setColor(): the shader was created with uniform buffers enabled", *this);
-    #endif
-    setUniform(_widthUniform, width);
-    return *this;
-}
-
-template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setSmoothness(const Float smoothness) {
-    #ifndef MAGNUM_TARGET_GLES2
-    CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
-        "Shaders::LineGL::setColor(): the shader was created with uniform buffers enabled", *this);
-    #endif
-    setUniform(_smoothnessUniform, smoothness);
-    return *this;
-}
-
-template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setMiterLengthLimit(const Float limit) {
-    #ifndef MAGNUM_TARGET_GLES2
-    CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
-        "Shaders::LineGL::setMiterLengthLimit(): the shader was created with uniform buffers enabled", *this);
-    #endif
-    CORRADE_ASSERT(_joinStyle == JoinStyle::Miter,
-        "Shaders::LineGL::setMiterLengthLimit(): the shader was created with" << _joinStyle, *this);
-    CORRADE_ASSERT(limit >= 1.0f && !Math::isInf(limit),
-        "Shaders::LineGL::setMiterLengthLimit(): expected a finite value greater than or equal to 1, got" << limit, *this);
-    /* Calculate the half-angle from the length and supply a cosine of it to
-       the shader */
-    setUniform(_miterLimitUniform, Math::cos(2.0f*Math::asin(1.0f/limit)));
-    return *this;
-}
-
-template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setMiterAngleLimit(const Rad limit) {
-    #ifndef MAGNUM_TARGET_GLES2
-    CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
-        "Shaders::LineGL::setMiterAngleLimit(): the shader was created with uniform buffers enabled", *this);
-    #endif
-    CORRADE_ASSERT(_joinStyle == JoinStyle::Miter,
-        "Shaders::LineGL::setMiterAngleLimit(): the shader was created with" << _joinStyle, *this);
-    CORRADE_ASSERT(limit > 0.0_radf,
-        "Shaders::LineGL::setMiterAngleLimit(): expected a value greater than 0, got" << limit, *this);
-    /* Supply a cosine of the angle to the shader */
-    setUniform(_miterLimitUniform, Math::cos(limit));
+        "Shaders::LineGL::setTransformationProjectionMatrix(): the shader was created with uniform buffers enabled", *this);
+    setUniform(_transformationProjectionMatrixUniform, matrix);
     return *this;
 }
 
 template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setBackgroundColor(const Magnum::Color4& color) {
-    #ifndef MAGNUM_TARGET_GLES2
     CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
-        "Shaders::LineGL::setColor(): the shader was created with uniform buffers enabled", *this);
-    #endif
+        "Shaders::LineGL::setBackgroundColor(): the shader was created with uniform buffers enabled", *this);
     setUniform(_backgroundColorUniform, color);
     return *this;
 }
 
 template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setColor(const Magnum::Color4& color) {
-    #ifndef MAGNUM_TARGET_GLES2
     CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
         "Shaders::LineGL::setColor(): the shader was created with uniform buffers enabled", *this);
-    #endif
     setUniform(_colorUniform, color);
     return *this;
 }
 
-#ifndef MAGNUM_TARGET_GLES2
+template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setWidth(const Float width) {
+    CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
+        "Shaders::LineGL::setWidth(): the shader was created with uniform buffers enabled", *this);
+    setUniform(_widthUniform, width);
+    return *this;
+}
+
+template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setSmoothness(const Float smoothness) {
+    CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
+        "Shaders::LineGL::setSmoothness(): the shader was created with uniform buffers enabled", *this);
+    setUniform(_smoothnessUniform, smoothness);
+    return *this;
+}
+
+template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setMiterLengthLimit(const Float limit) {
+    CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
+        "Shaders::LineGL::setMiterLengthLimit(): the shader was created with uniform buffers enabled", *this);
+    CORRADE_ASSERT(_joinStyle == LineJoinStyle::Miter,
+        "Shaders::LineGL::setMiterLengthLimit(): the shader was created with" << _joinStyle, *this);
+    setUniform(_miterLimitUniform, Implementation::lineMiterLengthLimit("Shaders::LineGL::setMiterLengthLimit():", limit));
+    return *this;
+}
+
+template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setMiterAngleLimit(const Rad limit) {
+    CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
+        "Shaders::LineGL::setMiterAngleLimit(): the shader was created with uniform buffers enabled", *this);
+    CORRADE_ASSERT(_joinStyle == LineJoinStyle::Miter,
+        "Shaders::LineGL::setMiterAngleLimit(): the shader was created with" << _joinStyle, *this);
+    setUniform(_miterLimitUniform, Implementation::lineMiterAngleLimit("Shaders::LineGL::setMiterAngleLimit():", limit));
+    return *this;
+}
+
 template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setObjectId(UnsignedInt id) {
     CORRADE_ASSERT(!(_flags >= Flag::UniformBuffers),
         "Shaders::LineGL::setObjectId(): the shader was created with uniform buffers enabled", *this);
@@ -383,9 +330,7 @@ template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setObje
     setUniform(_objectIdUniform, id);
     return *this;
 }
-#endif
 
-#ifndef MAGNUM_TARGET_GLES2
 template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::setDrawOffset(const UnsignedInt offset) {
     CORRADE_ASSERT(_flags >= Flag::UniformBuffers,
         "Shaders::LineGL::setDrawOffset(): the shader was not created with uniform buffers enabled", *this);
@@ -436,7 +381,8 @@ template<UnsignedInt dimensions> LineGL<dimensions>& LineGL<dimensions>::bindMat
     buffer.bind(GL::Buffer::Target::Uniform, MaterialBufferBinding, offset, size);
     return *this;
 }
-#endif
+
+template<UnsignedInt dimensions> LineGL<dimensions>::Configuration::Configuration(): _capStyle{LineCapStyle::Square}, _joinStyle{LineJoinStyle::Miter} {}
 
 template class MAGNUM_SHADERS_EXPORT LineGL<2>;
 template class MAGNUM_SHADERS_EXPORT LineGL<3>;
@@ -450,15 +396,11 @@ Debug& operator<<(Debug& debug, const LineGLFlag value) {
         /* LCOV_EXCL_START */
         #define _c(v) case LineGLFlag::v: return debug << "::" #v;
         _c(VertexColor)
-        #ifndef MAGNUM_TARGET_GLES2
         _c(ObjectId)
         _c(InstancedObjectId)
-        #endif
         _c(InstancedTransformation)
-        #ifndef MAGNUM_TARGET_GLES2
         _c(UniformBuffers)
         _c(MultiDraw)
-        #endif
         #undef _c
         /* LCOV_EXCL_STOP */
     }
@@ -469,48 +411,12 @@ Debug& operator<<(Debug& debug, const LineGLFlag value) {
 Debug& operator<<(Debug& debug, const LineGLFlags value) {
     return Containers::enumSetDebugOutput(debug, value, "Shaders::LineGL::Flags{}", {
         LineGLFlag::VertexColor,
-        #ifndef MAGNUM_TARGET_GLES2
         LineGLFlag::InstancedObjectId, /* Superset of ObjectId */
         LineGLFlag::ObjectId,
-        #endif
         LineGLFlag::InstancedTransformation,
-        #ifndef MAGNUM_TARGET_GLES2
         LineGLFlag::MultiDraw, /* Superset of UniformBuffers */
         LineGLFlag::UniformBuffers
-        #endif
     });
-}
-
-Debug& operator<<(Debug& debug, const LineGLCapStyle value) {
-    debug << "Shaders::LineGL::CapStyle" << Debug::nospace;
-
-    switch(value) {
-        /* LCOV_EXCL_START */
-        #define _c(v) case LineGLCapStyle::v: return debug << "::" #v;
-        _c(Butt)
-        _c(Square)
-        _c(Round)
-        _c(Triangle)
-        #undef _c
-        /* LCOV_EXCL_STOP */
-    }
-
-    return debug << "(" << Debug::nospace << reinterpret_cast<void*>(UnsignedByte(value)) << Debug::nospace << ")";
-}
-
-Debug& operator<<(Debug& debug, const LineGLJoinStyle value) {
-    debug << "Shaders::LineGL::JoinStyle" << Debug::nospace;
-
-    switch(value) {
-        /* LCOV_EXCL_START */
-        #define _c(v) case LineGLJoinStyle::v: return debug << "::" #v;
-        _c(Miter)
-        _c(Bevel)
-        #undef _c
-        /* LCOV_EXCL_STOP */
-    }
-
-    return debug << "(" << Debug::nospace << reinterpret_cast<void*>(UnsignedByte(value)) << Debug::nospace << ")";
 }
 
 }

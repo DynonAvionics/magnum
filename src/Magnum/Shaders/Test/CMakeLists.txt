@@ -30,7 +30,6 @@ set(CMAKE_FOLDER "Magnum/Shaders/Test")
 corrade_add_test(ShadersDistanceFieldVectorTest DistanceFieldVectorTest.cpp LIBRARIES MagnumShaders)
 corrade_add_test(ShadersFlatTest FlatTest.cpp LIBRARIES MagnumShaders)
 corrade_add_test(ShadersGenericTest GenericTest.cpp LIBRARIES MagnumShaders)
-corrade_add_test(ShadersLineTest LineTest.cpp LIBRARIES MagnumShaders)
 corrade_add_test(ShadersGLShaderWrapperTest GLShaderWrapperTest.cpp LIBRARIES MagnumShaders)
 corrade_add_test(ShadersMeshVisualizerTest MeshVisualizerTest.cpp LIBRARIES MagnumShaders)
 corrade_add_test(ShadersPhongTest PhongTest.cpp LIBRARIES MagnumShaders)
@@ -41,11 +40,16 @@ corrade_add_test(ShadersVectorTest VectorTest.cpp LIBRARIES MagnumShaders)
 corrade_add_test(ShadersDistanceFieldVectorGL_Test DistanceFieldVectorGL_Test.cpp LIBRARIES MagnumShaders)
 corrade_add_test(ShadersFlatGL_Test FlatGL_Test.cpp LIBRARIES MagnumShadersTestLib)
 corrade_add_test(ShadersGenericGL_Test GenericGL_Test.cpp LIBRARIES MagnumShaders)
-corrade_add_test(ShadersLineGL_Test LineGL_Test.cpp LIBRARIES MagnumShaders)
 corrade_add_test(ShadersMeshVisualizerGL_Test MeshVisualizerGL_Test.cpp LIBRARIES MagnumShadersTestLib)
 corrade_add_test(ShadersPhongGL_Test PhongGL_Test.cpp LIBRARIES MagnumShadersTestLib)
 corrade_add_test(ShadersVectorGL_Test VectorGL_Test.cpp LIBRARIES MagnumShaders)
 corrade_add_test(ShadersVertexColorGL_Test VertexColorGL_Test.cpp LIBRARIES MagnumShaders)
+
+if(NOT MAGNUM_TARGET_GLES2)
+    corrade_add_test(ShadersLineTest LineTest.cpp LIBRARIES MagnumShadersTestLib)
+
+    corrade_add_test(ShadersLineGL_Test LineGL_Test.cpp LIBRARIES MagnumShaders)
+endif()
 
 if(MAGNUM_BUILD_GL_TESTS)
     # Otherwise CMake complains that Corrade::PluginManager is not found, wtf
@@ -168,35 +172,6 @@ if(MAGNUM_BUILD_GL_TESTS)
         endif()
         if(MAGNUM_WITH_TGAIMPORTER)
             add_dependencies(ShadersFlatGLTest TgaImporter)
-        endif()
-    endif()
-
-    set(ShadersLineGLTest_SRCS LineGLTest.cpp)
-    if(CORRADE_TARGET_IOS)
-        list(APPEND ShadersLineGLTest_SRCS TestFiles LineTestFiles)
-    endif()
-    corrade_add_test(ShadersLineGLTest ${ShadersLineGLTest_SRCS}
-        LIBRARIES
-            MagnumDebugTools
-            MagnumMeshTools
-            MagnumPrimitives
-            MagnumShadersTestLib
-            MagnumOpenGLTester)
-    target_include_directories(ShadersLineGLTest PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>)
-    if(MAGNUM_BUILD_PLUGINS_STATIC)
-        if(MAGNUM_WITH_ANYIMAGEIMPORTER)
-            target_link_libraries(ShadersLineGLTest PRIVATE AnyImageImporter)
-        endif()
-        if(MAGNUM_WITH_TGAIMPORTER)
-            target_link_libraries(ShadersLineGLTest PRIVATE TgaImporter)
-        endif()
-    else()
-        # So the plugins get properly built when building the test
-        if(MAGNUM_WITH_ANYIMAGEIMPORTER)
-            add_dependencies(ShadersLineGLTest AnyImageImporter)
-        endif()
-        if(MAGNUM_WITH_TGAIMPORTER)
-            add_dependencies(ShadersLineGLTest TgaImporter)
         endif()
     endif()
 
@@ -486,4 +461,42 @@ if(MAGNUM_BUILD_GL_TESTS)
             VertexColorTestFiles
             PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     endif()
+
+    if(NOT MAGNUM_TARGET_GLES2)
+        set(ShadersLineGLTest_SRCS LineGLTest.cpp)
+        if(CORRADE_TARGET_IOS)
+            list(APPEND ShadersLineGLTest_SRCS TestFiles LineTestFiles)
+        endif()
+        corrade_add_test(ShadersLineGLTest ${ShadersLineGLTest_SRCS}
+            LIBRARIES
+                MagnumDebugTools
+                MagnumMeshTools
+                MagnumPrimitives
+                MagnumShadersTestLib
+                MagnumOpenGLTester)
+        target_include_directories(ShadersLineGLTest PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>)
+        if(MAGNUM_BUILD_PLUGINS_STATIC)
+            if(MAGNUM_WITH_ANYIMAGEIMPORTER)
+                target_link_libraries(ShadersLineGLTest PRIVATE AnyImageImporter)
+            endif()
+            if(MAGNUM_WITH_TGAIMPORTER)
+                target_link_libraries(ShadersLineGLTest PRIVATE TgaImporter)
+            endif()
+        else()
+            # So the plugins get properly built when building the test
+            if(MAGNUM_WITH_ANYIMAGEIMPORTER)
+                add_dependencies(ShadersLineGLTest AnyImageImporter)
+            endif()
+            if(MAGNUM_WITH_TGAIMPORTER)
+                add_dependencies(ShadersLineGLTest TgaImporter)
+            endif()
+        endif()
+
+        if(CORRADE_TARGET_IOS)
+            set_source_files_properties(
+                LineTestFiles
+                PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+        endif()
+    endif()
 endif()
+

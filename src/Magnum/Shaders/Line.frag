@@ -38,8 +38,27 @@
 
 /* Uniforms */
 
+#ifndef UNIFORM_BUFFERS
 #ifdef EXPLICIT_UNIFORM_LOCATION
 layout(location = 2)
+#endif
+uniform lowp vec4 backgroundColor
+    #ifndef GL_ES
+    = vec4(0.0)
+    #endif
+    ;
+
+#ifdef EXPLICIT_UNIFORM_LOCATION
+layout(location = 3)
+#endif
+uniform lowp vec4 color
+    #ifndef GL_ES
+    = vec4(1.0)
+    #endif
+    ;
+
+#ifdef EXPLICIT_UNIFORM_LOCATION
+layout(location = 4)
 #endif
 uniform mediump float width
     #ifndef GL_ES
@@ -48,30 +67,11 @@ uniform mediump float width
     ;
 
 #ifdef EXPLICIT_UNIFORM_LOCATION
-layout(location = 3)
+layout(location = 5)
 #endif
 uniform mediump float smoothness
     #ifndef GL_ES
     = 0.0
-    #endif
-    ;
-
-#ifdef EXPLICIT_UNIFORM_LOCATION
-layout(location = 5)
-#endif
-uniform lowp vec4 backgroundColor
-    #ifndef GL_ES
-    = vec4(0.0)
-    #endif
-    ;
-
-#ifndef UNIFORM_BUFFERS
-#ifdef EXPLICIT_UNIFORM_LOCATION
-layout(location = 6)
-#endif
-uniform lowp vec4 color
-    #ifndef GL_ES
-    = vec4(1.0)
     #endif
     ;
 
@@ -117,12 +117,17 @@ layout(std140
 };
 
 struct MaterialUniform {
+    lowp vec4 backgroundColor;
     lowp vec4 color;
+    highp vec4 widthSmoothnessMiterLimitReserved;
+    #define material_width widthSmoothnessMiterLimitReserved.x
+    #define material_smoothness widthSmoothnessMiterLimitReserved.y
+    #define material_miterLimit widthSmoothnessMiterLimitReserved.z
 };
 
 layout(std140
     #ifdef EXPLICIT_BINDING
-    , binding = 4
+    , binding = 3
     #endif
 ) uniform Material {
     MaterialUniform materials[MATERIAL_COUNT];
@@ -173,7 +178,10 @@ void main() {
     #else
     #define materialId 0u
     #endif
+    lowp const vec4 backgroundColor = materials[materialId].backgroundColor;
     lowp const vec4 color = materials[materialId].color;
+    lowp const float width = materials[materialId].material_width;
+    lowp const float smoothness = materials[materialId].material_smoothness;
     #endif
 
     // TODO better names ffs

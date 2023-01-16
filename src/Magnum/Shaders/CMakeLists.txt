@@ -31,7 +31,11 @@ if(NOT MAGNUM_WITH_GL)
     message(SEND_ERROR "Shaders are available only if MAGNUM_WITH_GL is enabled")
 endif()
 
-corrade_add_resource(MagnumShaders_RESOURCES_GL resources-gl.conf)
+if(MAGNUM_TARGET_GLES2)
+    corrade_add_resource(MagnumShaders_RESOURCES_GL resources-gles2.conf)
+else()
+    corrade_add_resource(MagnumShaders_RESOURCES_GL resources-gl.conf)
+endif()
 
 set(MagnumShaders_SRCS
     ${MagnumShaders_RESOURCES_GL})
@@ -39,7 +43,6 @@ set(MagnumShaders_SRCS
 set(MagnumShaders_GracefulAssert_SRCS
     DistanceFieldVectorGL.cpp
     FlatGL.cpp
-    LineGL.cpp
     MeshVisualizerGL.cpp
     PhongGL.cpp
     VectorGL.cpp
@@ -54,7 +57,6 @@ set(MagnumShaders_HEADERS
     FlatGL.h
     Generic.h
     GenericGL.h
-    LineGL.h
     MeshVisualizer.h
     MeshVisualizerGL.h
     Phong.h
@@ -70,6 +72,19 @@ set(MagnumShaders_HEADERS
 # Header files to display in project view of IDEs only
 set(MagnumShaders_PRIVATE_HEADERS
     Implementation/CreateCompatibilityShader.h)
+
+if(NOT MAGNUM_TARGET_GLES2)
+    list(APPEND MagnumShaders_GracefulAssert_SRCS
+        Line.cpp
+        LineGL.cpp)
+
+    list(APPEND MagnumShaders_HEADERS
+        Line.h
+        LineGL.h)
+
+    list(APPEND MagnumShaders_PRIVATE_HEADERS
+        Implementation/lineMiterLimit.h)
+endif()
 
 if(MAGNUM_BUILD_DEPRECATED)
     list(APPEND MagnumShaders_HEADERS

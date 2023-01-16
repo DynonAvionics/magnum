@@ -61,33 +61,22 @@ struct LineGLTest: GL::OpenGLTester {
 
     template<UnsignedInt dimensions> void construct();
     template<UnsignedInt dimensions> void constructAsync();
-    #ifndef MAGNUM_TARGET_GLES2
     template<UnsignedInt dimensions> void constructUniformBuffers();
     template<UnsignedInt dimensions> void constructUniformBuffersAsync();
-    #endif
 
     template<UnsignedInt dimensions> void constructMove();
-    #ifndef MAGNUM_TARGET_GLES2
     template<UnsignedInt dimensions> void constructMoveUniformBuffers();
-    #endif
 
-    // template<UnsignedInt dimensions> void constructInvalid();
-    #ifndef MAGNUM_TARGET_GLES2
+    /* No constructInvalid() as there isn't any assertion in the constructor
+       that wouldn't be related to UBOs */
     template<UnsignedInt dimensions> void constructUniformBuffersInvalid();
-    #endif
 
-    #ifndef MAGNUM_TARGET_GLES2
     template<UnsignedInt dimensions> void setUniformUniformBuffersEnabled();
     template<UnsignedInt dimensions> void bindBufferUniformBuffersNotEnabled();
-    #endif
     template<UnsignedInt dimensions> void setMiterLengthLimitInvalid();
     template<UnsignedInt dimensions> void setMiterAngleLimitInvalid();
-    #ifndef MAGNUM_TARGET_GLES2
     template<UnsignedInt dimensions> void setObjectIdNotEnabled();
-    #endif
-    #ifndef MAGNUM_TARGET_GLES2
     template<UnsignedInt dimensions> void setWrongDrawOffset();
-    #endif
 
     void renderSetup();
     void renderTeardown();
@@ -104,29 +93,23 @@ struct LineGLTest: GL::OpenGLTester {
     template<class T, LineGL2D::Flag flag = LineGL2D::Flag{}> void renderVertexColor2D();
     template<class T, LineGL3D::Flag flag = LineGL3D::Flag{}> void renderVertexColor3D();
 
-    #ifndef MAGNUM_TARGET_GLES2
-    void renderObjectIdSetup();
+    void renderObjectIdSetup(); // TODO merge with renderSetup() now that we're ES2-less?
     void renderObjectIdTeardown();
 
     template<LineGL2D::Flag flag = LineGL2D::Flag{}> void renderObjectId2D();
     template<LineGL3D::Flag flag = LineGL3D::Flag{}> void renderObjectId3D();
-    #endif
 
     template<LineGL2D::Flag flag = LineGL2D::Flag{}> void renderInstanced2D();
     template<LineGL3D::Flag flag = LineGL3D::Flag{}> void renderInstanced3D();
 
-    #ifndef MAGNUM_TARGET_GLES2
     void renderMulti2D();
     void renderMulti3D();
-    #endif
 
     private:
         PluginManager::Manager<Trade::AbstractImporter> _manager{"nonexistent"};
 
         GL::Renderbuffer _color{NoCreate};
-        #ifndef MAGNUM_TARGET_GLES2
         GL::Renderbuffer _objectId{NoCreate};
-        #endif
         GL::Framebuffer _framebuffer{NoCreate};
 };
 
@@ -136,43 +119,43 @@ using namespace Math::Literals;
 const struct {
     const char* name;
     LineGL2D::Flags flags;
-    // TODO cap/join style
+    Containers::Optional<LineCapStyle> capStyle;
+    Containers::Optional<LineJoinStyle> joinStyle;
 } ConstructData[]{
-    {"", {}},
-    {"vertex colors", LineGL2D::Flag::VertexColor},
-    #ifndef MAGNUM_TARGET_GLES2
-    {"object ID", LineGL2D::Flag::ObjectId},
-    {"instanced object ID", LineGL2D::Flag::InstancedObjectId},
-    #endif
-    {"instanced transformation", LineGL2D::Flag::InstancedTransformation},
+    {"", {}, {}, {}},
+    {"square caps, bevel joins", {}, LineCapStyle::Square, LineJoinStyle::Bevel},
+    {"round caps, miter joins", {}, LineCapStyle::Round, LineJoinStyle::Miter},
+    /** @todo use JoinStyle::MiterClip once it exists */
+    {"butt caps, miter joins", {}, LineCapStyle::Butt, LineJoinStyle::Miter},
+    /** @todo use JoinStyle::Round once it exists */
+    {"triangle caps, miter joins", {}, LineCapStyle::Triangle, LineJoinStyle::Miter},
+    {"vertex colors", LineGL2D::Flag::VertexColor, {}, {}},
+    {"object ID", LineGL2D::Flag::ObjectId, {}, {}},
+    {"instanced object ID", LineGL2D::Flag::InstancedObjectId, {}, {}},
+    {"instanced transformation", LineGL2D::Flag::InstancedTransformation, {}, {}},
 };
 
-#ifndef MAGNUM_TARGET_GLES2
 const struct {
     const char* name;
     LineGL2D::Flags flags;
-    // TODO cap/join style
+    Containers::Optional<LineCapStyle> capStyle;
+    Containers::Optional<LineJoinStyle> joinStyle;
     UnsignedInt materialCount, drawCount;
 } ConstructUniformBuffersData[]{
-    {"classic fallback", {}, 1, 1},
-    {"", LineGL2D::Flag::UniformBuffers, 1, 1},
+    {"classic fallback", {}, {}, {}, 1, 1},
+    {"", LineGL2D::Flag::UniformBuffers, {}, {}, 1, 1},
+    /* Just to verify that access to the miter limits is properly guarded,
+       no need to check all variants */
+    {"round caps, miter joins", LineGL2D::Flag::UniformBuffers, LineCapStyle::Round, LineJoinStyle::Miter, 1, 1},
+    {"butt caps, bevel joins", LineGL2D::Flag::UniformBuffers, LineCapStyle::Butt, LineJoinStyle::Bevel, 1, 1},
     /* SwiftShader has 256 uniform vectors at most, per-draw is 4+1 in 3D case
        and 3+1 in 2D, per-material 1 */
-    {"multiple materials, draws", LineGL2D::Flag::UniformBuffers, 16, 48},
-    {"object ID", LineGL2D::Flag::UniformBuffers|LineGL2D::Flag::ObjectId, 1, 1},
-    {"instanced object ID", LineGL2D::Flag::UniformBuffers|LineGL2D::Flag::InstancedObjectId, 1, 1},
-    {"multidraw with all the things", LineGL2D::Flag::MultiDraw|LineGL2D::Flag::ObjectId|LineGL2D::Flag::InstancedTransformation|LineGL2D::Flag::InstancedObjectId, 16, 48}
+    {"multiple materials, draws", LineGL2D::Flag::UniformBuffers, {}, {}, 16, 48},
+    {"object ID", LineGL2D::Flag::UniformBuffers|LineGL2D::Flag::ObjectId, {}, {}, 1, 1},
+    {"instanced object ID", LineGL2D::Flag::UniformBuffers|LineGL2D::Flag::InstancedObjectId, {}, {}, 1, 1},
+    {"multidraw with all the things", LineGL2D::Flag::MultiDraw|LineGL2D::Flag::ObjectId|LineGL2D::Flag::InstancedTransformation|LineGL2D::Flag::InstancedObjectId, {}, {}, 16, 48}
 };
-#endif
 
-// const struct {
-//     const char* name;
-//     LineGL2D::Flags flags;
-//     const char* message;
-// } ConstructInvalidData[]{
-// };
-
-#ifndef MAGNUM_TARGET_GLES2
 const struct {
     const char* name;
     LineGL2D::Flags flags;
@@ -184,32 +167,33 @@ const struct {
     {"zero materials", LineGL2D::Flag::UniformBuffers, 0, 1,
         "material count can't be zero"}
 };
-#endif
 
 const struct {
     const char* name;
-    LineGL2D::JoinStyle joinStyle;
+    LineJoinStyle joinStyle;
     Float limit;
     const char* message;
 } SetMiterLengthLimitInvalidData[]{
-    {"wrong join style", LineGL2D::JoinStyle::Bevel, 1.0f,
-        "the shader was created with Shaders::LineGL::JoinStyle::Bevel"},
-    {"too short", LineGL2D::JoinStyle::Miter, 0.9997f,
+    {"wrong join style", LineJoinStyle::Bevel, 1.0f,
+        "the shader was created with Shaders::LineJoinStyle::Bevel"},
+    {"too short", LineJoinStyle::Miter, 0.9997f,
         "expected a finite value greater than or equal to 1, got 0.9997"},
-    {"too long", LineGL2D::JoinStyle::Miter, Constants::inf(),
+    {"too long", LineJoinStyle::Miter, Constants::inf(),
         "expected a finite value greater than or equal to 1, got inf"},
 };
 
 const struct {
     const char* name;
-    LineGL2D::JoinStyle joinStyle;
+    LineJoinStyle joinStyle;
     Rad limit;
     const char* message;
 } SetMiterAngleLimitInvalidData[]{
-    {"wrong join style", LineGL2D::JoinStyle::Bevel, 90.0_degf,
-        "the shader was created with Shaders::LineGL::JoinStyle::Bevel"},
-    {"too small", LineGL2D::JoinStyle::Miter, 0.0_degf,
-        "expected a value greater than 0, got Rad(0)"}
+    {"wrong join style", LineJoinStyle::Bevel, 90.0_degf,
+        "the shader was created with Shaders::LineJoinStyle::Bevel"},
+    {"too small", LineJoinStyle::Miter, 0.0_degf,
+        "expected a value greater than 0° and less than or equal to 180°, got 0°"},
+    {"too large", LineJoinStyle::Miter, 180.1_degf,
+        "expected a value greater than 0° and less than or equal to 180°, got 180.1°"}
 };
 
 const struct {
@@ -218,8 +202,8 @@ const struct {
     Float smoothness;
     Containers::Optional<Float> miterLengthLimit;
     Containers::Optional<Deg> miterAngleLimit;
-    Containers::Optional<LineGL2D::CapStyle> capStyle;
-    Containers::Optional<LineGL2D::JoinStyle> joinStyle;
+    Containers::Optional<LineCapStyle> capStyle;
+    Containers::Optional<LineJoinStyle> joinStyle;
     const char* expected;
 } RenderLineCapsJoins2DData[]{
     {"caps & joints default, flat",
@@ -227,61 +211,61 @@ const struct {
         "caps-square-joins-miter-flat.tga"},
     {"caps butt, joins default, flat",
         16.0f, 0.0f, {}, {},
-        LineGL2D::CapStyle::Butt, {},
+        LineCapStyle::Butt, {},
         "caps-butt-joins-miter-flat.tga"},
     {"caps butt, joins bevel",
         16.0f, 1.0f, {}, {},
-        LineGL2D::CapStyle::Butt, LineGL2D::JoinStyle::Bevel,
+        LineCapStyle::Butt, LineJoinStyle::Bevel,
         "caps-butt-joins-bevel.tga"}, // TODO the smoothing is off for 30°
     {"caps square, joins miter",
         16.0f, 1.0f, {}, {},
-        LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
+        LineCapStyle::Square, LineJoinStyle::Miter,
         "caps-square-joins-miter.tga"},
     {"caps square, joins bevel",
         16.0f, 1.0f, {}, {},
-        LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Bevel,
+        LineCapStyle::Square, LineJoinStyle::Bevel,
         "caps-square-joins-bevel.tga"}, // TODO the smoothing is off for 30°
-    {"caps square, joins miter, miter limit 3.95",
+    {"caps square, joins miter, limit 3.95",
         16.0f, 1.0f, 3.95f, {},
-        LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
+        LineCapStyle::Square, LineJoinStyle::Miter,
         /* Same as default */
         "caps-square-joins-miter.tga"},
-    {"caps square, joins miter, miter limit 3.6",
+    {"caps square, joins miter, limit 3.6",
         16.0f, 1.0f, 3.6f, {}, /** @todo 3.85 should work but it doesn't */
-        LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
+        LineCapStyle::Square, LineJoinStyle::Miter,
         /* The 30° join should get a bevel here */
         "caps-square-joins-miter-limit-36.tga"},
-    {"caps square, joins miter, miter limit 59°",
+    {"caps square, joins miter, limit 59°",
         16.0f, 1.0f, {}, 59.0_degf,
-        LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
+        LineCapStyle::Square, LineJoinStyle::Miter,
         /* Same as limit 3.6, the 30° join gets a bevel */
         "caps-square-joins-miter-limit-36.tga"},
-    {"caps square, joins miter, miter limit 70°",
+    {"caps square, joins miter, limit 70°",
         16.0f, 1.0f, {}, 70.0_degf, /** @todo 61° should work but it doesn't */
-        LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
+        LineCapStyle::Square, LineJoinStyle::Miter,
         /* The 30° and 60° join should get a bevel here, 90° and 120° should
            stay */
         "caps-square-joins-miter-limit-70deg.tga"},
-    {"caps square, joins miter, miter limit 89°",
+    {"caps square, joins miter, limit 89°",
         16.0f, 1.0f, {}, 89.0_degf,
-        LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
+        LineCapStyle::Square, LineJoinStyle::Miter,
         /* Same as limit 61°, the 30° and 60° joins get a bevel, 90° and 120°
            not */
         "caps-square-joins-miter-limit-70deg.tga"},
-    {"caps square, joins miter, miter limit 91°",
+    {"caps square, joins miter, limit 91°",
         16.0f, 1.0f, {}, 91.0_degf,
-        LineGL2D::CapStyle::Square, LineGL2D::JoinStyle::Miter,
+        LineCapStyle::Square, LineJoinStyle::Miter,
         /* The 30°, 60° and 90° join should get a bevel here, 120° should
            stay */
         "caps-square-joins-miter-limit-91deg.tga"},
     {"caps round, joins miter",
         /** @todo use round joins instead once implemented */
         16.0f, 1.0f, {}, {},
-        LineGL2D::CapStyle::Round, LineGL2D::JoinStyle::Miter,
+        LineCapStyle::Round, LineJoinStyle::Miter,
         "caps-round-joins-miter.tga"},
     {"caps triangle, joins bevel",
         16.0f, 1.0f, {}, {},
-        LineGL2D::CapStyle::Triangle, LineGL2D::JoinStyle::Bevel,
+        LineCapStyle::Triangle, LineJoinStyle::Bevel,
         "caps-triangle-joins-bevel.tga"},
 };
 
@@ -299,49 +283,41 @@ LineGLTest::LineGLTest() {
 
     });
 
-    #ifndef MAGNUM_TARGET_GLES2
-    // addInstancedTests<LineGLTest>({
-    //     &LineGLTest::constructUniformBuffers<2>,
-    //     &LineGLTest::constructUniformBuffers<3>},
-    //     Containers::arraySize(ConstructUniformBuffersData));
-    //
-    // addTests<LineGLTest>({
-    //     &LineGLTest::constructUniformBuffersAsync<2>,
-    //     &LineGLTest::constructUniformBuffersAsync<3>});
-    #endif
+    addInstancedTests<LineGLTest>({
+        &LineGLTest::constructUniformBuffers<2>,
+    //     &LineGLTest::constructUniformBuffers<3>
+
+    },
+        Containers::arraySize(ConstructUniformBuffersData));
+
+    addTests<LineGLTest>({
+        &LineGLTest::constructUniformBuffersAsync<2>,
+    //     &LineGLTest::constructUniformBuffersAsync<3>
+
+    });
 
     addTests<LineGLTest>({
         &LineGLTest::constructMove<2>,
         // &LineGLTest::constructMove<3>,
 
-        // #ifndef MAGNUM_TARGET_GLES2
-        // &LineGLTest::constructMoveUniformBuffers<2>,
+        &LineGLTest::constructMoveUniformBuffers<2>,
         // &LineGLTest::constructMoveUniformBuffers<3>,
-        // #endif
+
         });
 
-    // addInstancedTests<LineGLTest>({
-    //     &LineGLTest::constructInvalid<2>,
-    //     &LineGLTest::constructInvalid<3>},
-    //     Containers::arraySize(ConstructInvalidData));
-
-    #ifndef MAGNUM_TARGET_GLES2
     addInstancedTests<LineGLTest>({
         &LineGLTest::constructUniformBuffersInvalid<2>,
         // &LineGLTest::constructUniformBuffersInvalid<3>
 
     },
         Containers::arraySize(ConstructUniformBuffersInvalidData));
-    #endif
 
-    #ifndef MAGNUM_TARGET_GLES2
     addTests<LineGLTest>({
-        // &LineGLTest::setUniformUniformBuffersEnabled<2>,
+        &LineGLTest::setUniformUniformBuffersEnabled<2>,
         // &LineGLTest::setUniformUniformBuffersEnabled<3>,
         &LineGLTest::bindBufferUniformBuffersNotEnabled<2>,
         // &LineGLTest::bindBufferUniformBuffersNotEnabled<3>,
     });
-    #endif
 
     addInstancedTests<LineGLTest>({
         &LineGLTest::setMiterLengthLimitInvalid<2>,
@@ -357,25 +333,19 @@ LineGLTest::LineGLTest() {
     },
         Containers::arraySize(SetMiterAngleLimitInvalidData));
 
-    #ifndef MAGNUM_TARGET_GLES2
     addTests<LineGLTest>({&LineGLTest::setObjectIdNotEnabled<2>,
         // &LineGLTest::setObjectIdNotEnabled<3>,
-        // &LineGLTest::setWrongDrawOffset<2>,
+        &LineGLTest::setWrongDrawOffset<2>,
         // &LineGLTest::setWrongDrawOffset<3>
 
     });
-    #endif
 
     /* MSVC needs explicit type due to default template args */
     addTests<LineGLTest>({
         &LineGLTest::renderDefaults2D,
-        #ifndef MAGNUM_TARGET_GLES2
-        // &LineGLTest::renderDefaults2D<LineGL2D::Flag::UniformBuffers>,
-        #endif
+        &LineGLTest::renderDefaults2D<LineGL2D::Flag::UniformBuffers>,
         // &LineGLTest::renderDefaults3D,
-        // #ifndef MAGNUM_TARGET_GLES2
-        // &LineGLTest::renderDefaults3D<LineGL3D::Flag::UniformBuffers>,
-        // #endif
+        // &LineGLTest::renderDefaults3D<LineGL3D::Flag::UniformBuffers>
         },
         &LineGLTest::renderSetup,
         &LineGLTest::renderTeardown);
@@ -383,12 +353,9 @@ LineGLTest::LineGLTest() {
     /* MSVC needs explicit type due to default template args */
     addInstancedTests<LineGLTest>({
         &LineGLTest::renderLineCapsJoins2D,
-        #ifndef MAGNUM_TARGET_GLES2
-        // &LineGLTest::renderLineCapsJoins2D<LineGL2D::Flag::UniformBuffers>,
-        #endif
+        &LineGLTest::renderLineCapsJoins2D<LineGL2D::Flag::UniformBuffers>,
         &LineGLTest::renderLineCapsJoins2DReversed,
-        &LineGLTest::renderLineCapsJoins2DTransformed,
-        },
+        &LineGLTest::renderLineCapsJoins2DTransformed},
         Containers::arraySize(RenderLineCapsJoins2DData),
         &LineGLTest::renderSetup,
         &LineGLTest::renderTeardown);
@@ -404,18 +371,20 @@ LineGLTest::LineGLTest() {
 }
 
 template<UnsignedInt dimensions> void LineGLTest::construct() {
-    setTestCaseTemplateName(Utility::format("{}", dimensions));
-
     auto&& data = ConstructData[testCaseInstanceId()];
     setTestCaseDescription(data.name);
+    setTestCaseTemplateName(Utility::format("{}", dimensions));
 
     #ifndef MAGNUM_TARGET_GLES
     if((data.flags & LineGL2D::Flag::ObjectId) && !GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
         CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
     #endif
 
-    LineGL<dimensions> shader{typename LineGL<dimensions>::Configuration{}
-        .setFlags(data.flags)};
+    typename LineGL<dimensions>::Configuration configuration;
+    configuration.setFlags(data.flags);
+    if(data.capStyle) configuration.setCapStyle(*data.capStyle);
+    if(data.joinStyle) configuration.setJoinStyle(*data.joinStyle);
+    LineGL<dimensions> shader{configuration};
     CORRADE_COMPARE(shader.flags(), data.flags);
     CORRADE_VERIFY(shader.id());
     {
@@ -452,12 +421,10 @@ template<UnsignedInt dimensions> void LineGLTest::constructAsync() {
     MAGNUM_VERIFY_NO_GL_ERROR();
 }
 
-#ifndef MAGNUM_TARGET_GLES2
 template<UnsignedInt dimensions> void LineGLTest::constructUniformBuffers() {
-    setTestCaseTemplateName(Utility::format("{}", dimensions));
-
     auto&& data = ConstructUniformBuffersData[testCaseInstanceId()];
     setTestCaseDescription(data.name);
+    setTestCaseTemplateName(Utility::format("{}", dimensions));
 
     #ifndef MAGNUM_TARGET_GLES
     if((data.flags & LineGL2D::Flag::UniformBuffers) && !GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
@@ -479,10 +446,14 @@ template<UnsignedInt dimensions> void LineGLTest::constructUniformBuffers() {
         #endif
     }
 
-    LineGL<dimensions> shader{typename LineGL<dimensions>::Configuration{}
+    typename LineGL<dimensions>::Configuration configuration;
+    configuration
         .setFlags(data.flags)
         .setMaterialCount(data.materialCount)
-        .setDrawCount(data.drawCount)};
+        .setDrawCount(data.drawCount);
+    if(data.capStyle) configuration.setCapStyle(*data.capStyle);
+    if(data.joinStyle) configuration.setJoinStyle(*data.joinStyle);
+    LineGL<dimensions> shader{configuration};
     CORRADE_COMPARE(shader.flags(), data.flags);
     CORRADE_COMPARE(shader.materialCount(), data.materialCount);
     CORRADE_COMPARE(shader.drawCount(), data.drawCount);
@@ -491,7 +462,7 @@ template<UnsignedInt dimensions> void LineGLTest::constructUniformBuffers() {
         #if defined(CORRADE_TARGET_APPLE) && !defined(MAGNUM_TARGET_GLES)
         CORRADE_EXPECT_FAIL("macOS drivers need insane amount of state to validate properly.");
         #endif
-        CORRADE_VERIFY(shader.validate().first);
+        CORRADE_VERIFY(shader.validate().first());
     }
 
     MAGNUM_VERIFY_NO_GL_ERROR();
@@ -525,13 +496,11 @@ template<UnsignedInt dimensions> void LineGLTest::constructUniformBuffersAsync()
         #if defined(CORRADE_TARGET_APPLE) && !defined(MAGNUM_TARGET_GLES)
         CORRADE_EXPECT_FAIL("macOS drivers need insane amount of state to validate properly.");
         #endif
-        CORRADE_VERIFY(shader.validate().first);
+        CORRADE_VERIFY(shader.validate().first());
     }
 
     MAGNUM_VERIFY_NO_GL_ERROR();
 }
-
-#endif
 
 template<UnsignedInt dimensions> void LineGLTest::constructMove() {
     setTestCaseTemplateName(Utility::format("{}", dimensions));
@@ -555,7 +524,6 @@ template<UnsignedInt dimensions> void LineGLTest::constructMove() {
     CORRADE_VERIFY(!b.id());
 }
 
-#ifndef MAGNUM_TARGET_GLES2
 template<UnsignedInt dimensions> void LineGLTest::constructMoveUniformBuffers() {
     setTestCaseTemplateName(Utility::format("{}", dimensions));
 
@@ -588,23 +556,7 @@ template<UnsignedInt dimensions> void LineGLTest::constructMoveUniformBuffers() 
     CORRADE_COMPARE(c.drawCount(), 5);
     CORRADE_VERIFY(!b.id());
 }
-#endif
 
-// template<UnsignedInt dimensions> void LineGLTest::constructInvalid() {
-//     auto&& data = ConstructInvalidData[testCaseInstanceId()];
-//     setTestCaseTemplateName(Utility::format("{}", dimensions));
-//     setTestCaseDescription(data.name);
-//
-//     CORRADE_SKIP_IF_NO_ASSERT();
-//
-//     std::ostringstream out;
-//     Error redirectError{&out};
-//     LineGL<dimensions>{data.flags};
-//     CORRADE_COMPARE(out.str(), Utility::formatString(
-//         "Shaders::LineGL: {}\n", data.message));
-// }
-
-#ifndef MAGNUM_TARGET_GLES2
 template<UnsignedInt dimensions> void LineGLTest::constructUniformBuffersInvalid() {
     auto&& data = ConstructUniformBuffersInvalidData[testCaseInstanceId()];
     setTestCaseTemplateName(Utility::format("{}", dimensions));
@@ -626,9 +578,7 @@ template<UnsignedInt dimensions> void LineGLTest::constructUniformBuffersInvalid
     CORRADE_COMPARE(out.str(), Utility::formatString(
         "Shaders::LineGL: {}\n", data.message));
 }
-#endif
 
-#ifndef MAGNUM_TARGET_GLES2
 template<UnsignedInt dimensions> void LineGLTest::setUniformUniformBuffersEnabled() {
     setTestCaseTemplateName(Utility::format("{}", dimensions));
 
@@ -648,19 +598,21 @@ template<UnsignedInt dimensions> void LineGLTest::setUniformUniformBuffersEnable
     std::ostringstream out;
     Error redirectError{&out};
     shader.setTransformationProjectionMatrix({})
-        .setWidth({})
-        .setSmoothness({})
-        .setMiterLimit({})
         .setBackgroundColor({})
         .setColor({})
+        .setWidth({})
+        .setSmoothness({})
+        .setMiterLengthLimit({})
+        .setMiterAngleLimit({})
         .setObjectId({});
     CORRADE_COMPARE(out.str(),
         "Shaders::LineGL::setTransformationProjectionMatrix(): the shader was created with uniform buffers enabled\n"
-        "Shaders::LineGL::setWidth(): the shader was created with uniform buffers enabled\n"
-        "Shaders::LineGL::setSmoothness(): the shader was created with uniform buffers enabled\n"
-        "Shaders::LineGL::setMiterLimit(): the shader was created with uniform buffers enabled\n"
         "Shaders::LineGL::setBackgroundColor(): the shader was created with uniform buffers enabled\n"
         "Shaders::LineGL::setColor(): the shader was created with uniform buffers enabled\n"
+        "Shaders::LineGL::setWidth(): the shader was created with uniform buffers enabled\n"
+        "Shaders::LineGL::setSmoothness(): the shader was created with uniform buffers enabled\n"
+        "Shaders::LineGL::setMiterLengthLimit(): the shader was created with uniform buffers enabled\n"
+        "Shaders::LineGL::setMiterAngleLimit(): the shader was created with uniform buffers enabled\n"
         "Shaders::LineGL::setObjectId(): the shader was created with uniform buffers enabled\n");
 }
 
@@ -690,7 +642,6 @@ template<UnsignedInt dimensions> void LineGLTest::bindBufferUniformBuffersNotEna
         "Shaders::LineGL::bindMaterialBuffer(): the shader was not created with uniform buffers enabled\n"
         "Shaders::LineGL::setDrawOffset(): the shader was not created with uniform buffers enabled\n");
 }
-#endif
 
 template<UnsignedInt dimensions> void LineGLTest::setMiterLengthLimitInvalid() {
     auto&& data = SetMiterLengthLimitInvalidData[testCaseInstanceId()];
@@ -730,7 +681,6 @@ template<UnsignedInt dimensions> void LineGLTest::setMiterAngleLimitInvalid() {
         "Shaders::LineGL::setMiterAngleLimit(): {}\n", data.message));
 }
 
-#ifndef MAGNUM_TARGET_GLES2
 template<UnsignedInt dimensions> void LineGLTest::setObjectIdNotEnabled() {
     setTestCaseTemplateName(Utility::format("{}", dimensions));
 
@@ -744,9 +694,7 @@ template<UnsignedInt dimensions> void LineGLTest::setObjectIdNotEnabled() {
     CORRADE_COMPARE(out.str(),
         "Shaders::LineGL::setObjectId(): the shader was not created with object ID enabled\n");
 }
-#endif
 
-#ifndef MAGNUM_TARGET_GLES2
 template<UnsignedInt dimensions> void LineGLTest::setWrongDrawOffset() {
     setTestCaseTemplateName(Utility::format("{}", dimensions));
 
@@ -768,7 +716,6 @@ template<UnsignedInt dimensions> void LineGLTest::setWrongDrawOffset() {
     CORRADE_COMPARE(out.str(),
         "Shaders::LineGL::setDrawOffset(): draw offset 5 is out of bounds for 5 draws\n");
 }
-#endif
 
 constexpr Vector2i RenderSize{128, 128};
 
@@ -776,16 +723,12 @@ void LineGLTest::renderSetup() {
     /* Pick a color that's directly representable on RGBA4 as well to reduce
        artifacts */
     GL::Renderer::setClearColor(0x111111_rgbf);
+    /* The geometry should be generated in CCW order, enable face culling to
+       verify that */
     GL::Renderer::enable(GL::Renderer::Feature::FaceCulling);
 
     _color = GL::Renderbuffer{};
-    _color.setStorage(
-        #if !defined(MAGNUM_TARGET_GLES2) || !defined(MAGNUM_TARGET_WEBGL)
-        GL::RenderbufferFormat::RGBA8,
-        #else
-        GL::RenderbufferFormat::RGBA4,
-        #endif
-        RenderSize);
+    _color.setStorage(GL::RenderbufferFormat::RGBA8, RenderSize);
     _framebuffer = GL::Framebuffer{{{}, RenderSize}};
     _framebuffer.attachRenderbuffer(GL::Framebuffer::ColorAttachment{0}, _color)
         .clear(GL::FramebufferClear::Color)
@@ -872,7 +815,6 @@ template<UnsignedInt dimensions> GL::Mesh generateLineMesh(Containers::StridedAr
             i*4 + 3
         });
 
-        // TODO enable FaceCulling
         /* Add also indices for the bevel in both orientations (one will always
            degenerate) */
         if(!(Int(Math::abs(vertices[i*4 + 3].position[dimensions])) & LineCap)) {
@@ -902,12 +844,12 @@ GL::Mesh generateLineMesh(std::initializer_list<Vector2> lineSegments) {
     return generateLineMesh<2>(Containers::arrayView(lineSegments));
 }
 
+// TODO
 // GL::Mesh generateLineMesh(std::initializer_list<Vector3> lineSegments) {
 //     return generateLineMesh<3>(Containers::arrayView(lineSegments));
 // }
 
 template<LineGL2D::Flag flag> void LineGLTest::renderDefaults2D() {
-    #ifndef MAGNUM_TARGET_GLES2
     if(flag == LineGL2D::Flag::UniformBuffers) {
         setTestCaseTemplateName("Flag::UniformBuffers");
 
@@ -916,7 +858,6 @@ template<LineGL2D::Flag flag> void LineGLTest::renderDefaults2D() {
             CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
         #endif
     }
-    #endif
 
     GL::Mesh lines = generateLineMesh({
         /* A / line from the top to bottom */
@@ -944,9 +885,7 @@ template<LineGL2D::Flag flag> void LineGLTest::renderDefaults2D() {
 
     if(flag == LineGL2D::Flag{}) {
         shader.draw(lines);
-    }
-    #ifndef MAGNUM_TARGET_GLES2
-    else if(flag == LineGL2D::Flag::UniformBuffers) {
+    } else if(flag == LineGL2D::Flag::UniformBuffers) {
         GL::Buffer transformationProjectionUniform{GL::Buffer::TargetHint::Uniform, {
             TransformationProjectionUniform2D{}
         }};
@@ -961,9 +900,7 @@ template<LineGL2D::Flag flag> void LineGLTest::renderDefaults2D() {
             .bindDrawBuffer(drawUniform)
             .bindMaterialBuffer(materialUniform)
             .draw(lines);
-    }
-    #endif
-    else CORRADE_INTERNAL_ASSERT_UNREACHABLE();
+    } else CORRADE_INTERNAL_ASSERT_UNREACHABLE();
 
     GL::Renderer::disable(GL::Renderer::Feature::Blending);
 
@@ -1034,7 +971,6 @@ template<LineGL2D::Flag flag> void LineGLTest::renderLineCapsJoins2D() {
     auto&& data = RenderLineCapsJoins2DData[testCaseInstanceId()];
     setTestCaseDescription(data.name);
 
-    #ifndef MAGNUM_TARGET_GLES2
     if(flag == LineGL2D::Flag::UniformBuffers) {
         setTestCaseTemplateName("Flag::UniformBuffers");
 
@@ -1043,7 +979,6 @@ template<LineGL2D::Flag flag> void LineGLTest::renderLineCapsJoins2D() {
             CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
         #endif
     }
-    #endif
 
     GL::Mesh lines = generateLineMesh<2>(RenderLineCapsJoins2DLineData);
 
@@ -1052,13 +987,7 @@ template<LineGL2D::Flag flag> void LineGLTest::renderLineCapsJoins2D() {
     if(data.capStyle) configuration.setCapStyle(*data.capStyle);
     if(data.joinStyle) configuration.setJoinStyle(*data.joinStyle);
     LineGL2D shader{configuration};
-    shader
-        .setViewportSize(Vector2{RenderSize})
-        .setWidth(data.width)
-        .setSmoothness(data.smoothness)
-        .setColor(0x80808080_rgbaf);
-    if(data.miterLengthLimit) shader.setMiterLengthLimit(*data.miterLengthLimit);
-    if(data.miterAngleLimit) shader.setMiterAngleLimit(*data.miterAngleLimit);
+    shader.setViewportSize(Vector2{RenderSize});
 
     /* Enabling blending and a half-transparent color -- there should be no
        overlaps */
@@ -1068,27 +997,40 @@ template<LineGL2D::Flag flag> void LineGLTest::renderLineCapsJoins2D() {
         GL::Renderer::BlendFunction::OneMinusSourceAlpha);
 
     if(flag == LineGL2D::Flag{}) {
+        shader
+            .setWidth(data.width)
+            .setSmoothness(data.smoothness)
+            .setColor(0x80808080_rgbaf);
+        if(data.miterLengthLimit)
+            shader.setMiterLengthLimit(*data.miterLengthLimit);
+        if(data.miterAngleLimit)
+            shader.setMiterAngleLimit(*data.miterAngleLimit);
         shader.draw(lines);
-    }
-    #ifndef MAGNUM_TARGET_GLES2
-    else if(flag == LineGL2D::Flag::UniformBuffers) {
+    } else if(flag == LineGL2D::Flag::UniformBuffers) {
         GL::Buffer transformationProjectionUniform{GL::Buffer::TargetHint::Uniform, {
             TransformationProjectionUniform2D{}
         }};
         GL::Buffer drawUniform{GL::Buffer::TargetHint::Uniform, {
             LineDrawUniform{}
         }};
-        GL::Buffer materialUniform{GL::Buffer::TargetHint::Uniform, {
-            LineMaterialUniform{}
-        }};
+
+        LineMaterialUniform materialUniformData[1];
+        (*materialUniformData)
+            .setWidth(data.width)
+            .setSmoothness(data.smoothness)
+            .setColor(0x80808080_rgbaf);
+        if(data.miterLengthLimit)
+            materialUniformData->setMiterLengthLimit(*data.miterLengthLimit);
+        if(data.miterAngleLimit)
+            materialUniformData->setMiterAngleLimit(*data.miterAngleLimit);
+        GL::Buffer materialUniform{materialUniformData};
+
         shader
             .bindTransformationProjectionBuffer(transformationProjectionUniform)
             .bindDrawBuffer(drawUniform)
             .bindMaterialBuffer(materialUniform)
             .draw(lines);
-    }
-    #endif
-    else CORRADE_INTERNAL_ASSERT_UNREACHABLE();
+    } else CORRADE_INTERNAL_ASSERT_UNREACHABLE();
 
     GL::Renderer::disable(GL::Renderer::Feature::Blending);
 

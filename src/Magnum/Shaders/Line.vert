@@ -23,7 +23,7 @@
     DEALINGS IN THE SOFTWARE.
 */
 
-#if defined(INSTANCED_OBJECT_ID) && !defined(GL_ES) && !defined(NEW_GLSL)
+#if !defined(GL_ES) && !defined(NEW_GLSL)
 #extension GL_EXT_gpu_shader4: require
 #endif
 
@@ -78,7 +78,7 @@ uniform highp mat4 transformationProjectionMatrix
 #endif
 
 #ifdef EXPLICIT_UNIFORM_LOCATION
-layout(location = 2)
+layout(location = 4)
 #endif
 uniform mediump float width
     #ifndef GL_ES
@@ -87,7 +87,7 @@ uniform mediump float width
     ;
 
 #ifdef EXPLICIT_UNIFORM_LOCATION
-layout(location = 3)
+layout(location = 5)
 #endif
 uniform mediump float smoothness
     #ifndef GL_ES
@@ -96,11 +96,11 @@ uniform mediump float smoothness
     ;
 
 #ifdef EXPLICIT_UNIFORM_LOCATION
-layout(location = 4)
+layout(location = 6)
 #endif
 uniform mediump float miterLimit
     #ifndef GL_ES
-    /* cos(2*asin(1.0/4.0)), with 4 being the documented limit */
+    /* cos(2*asin(1.0/4.0)), with 4 being the documented length limit */
     = 0.875
     #endif
     ;
@@ -138,10 +138,45 @@ layout(std140
         #endif
     transformationProjectionMatrices[DRAW_COUNT];
 };
+
+struct DrawUniform {
+    highp uvec4 materialIdReservedObjectIdReservedReserved;
+    #define draw_materialIdReserved materialIdReservedObjectIdReservedReserved.x
+    #define draw_objectId materialIdReservedObjectIdReservedReserved.y
+};
+
+layout(std140
+    #ifdef EXPLICIT_BINDING
+    , binding = 2
+    #endif
+) uniform Draw {
+    DrawUniform draws[DRAW_COUNT];
+};
+
+struct MaterialUniform {
+    lowp vec4 backgroundColor;
+    lowp vec4 color;
+    highp vec4 widthSmoothnessMiterLimitReserved;
+    #define material_width widthSmoothnessMiterLimitReserved.x
+    #define material_smoothness widthSmoothnessMiterLimitReserved.y
+    #define material_miterLimit widthSmoothnessMiterLimitReserved.z
+};
+
+layout(std140
+    #ifdef EXPLICIT_BINDING
+    , binding = 3
+    #endif
+) uniform Material {
+    MaterialUniform materials[MATERIAL_COUNT];
+};
 #endif
 
 /* Inputs */
 
+// TODO put into a separate attribute so it can be using a smaller type? it'd
+//  need to contain also info about "the other line point is a cap" and
+//  possibly also info about the neigbor line, if it has a cap .. thus 5 bits
+//  in total
 /* The third component in 2D (or fourth in 3D) is a point marker. It's a
    combination of bits indicating the following:
 
@@ -268,6 +303,14 @@ void main() {
     #else
     #error
     #endif
+    #if MATERIAL_COUNT > 1
+    mediump const uint materialId = draws[drawId].draw_materialIdReserved & 0xffffu;
+    #else
+    #define materialId 0u
+    #endif
+    lowp const float width = materials[materialId].material_width;
+    lowp const float smoothness = materials[materialId].material_smoothness;
+    highp const float miterLimit = materials[materialId].material_miterLimit;
     #endif
 
     // TODO look at the precision qualifiers, same for *.frag
