@@ -270,73 +270,54 @@ const struct {
 LineGLTest::LineGLTest() {
     addInstancedTests<LineGLTest>({
         &LineGLTest::construct<2>,
-        // &LineGLTest::construct<3>
-
-    },
+        &LineGLTest::construct<3>},
         Containers::arraySize(ConstructData));
 
     addTests<LineGLTest>({
         &LineGLTest::constructAsync<2>,
-        // &LineGLTest::constructAsync<3>
-
-    });
+        &LineGLTest::constructAsync<3>});
 
     addInstancedTests<LineGLTest>({
         &LineGLTest::constructUniformBuffers<2>,
-    //     &LineGLTest::constructUniformBuffers<3>
-
-    },
+        &LineGLTest::constructUniformBuffers<3>},
         Containers::arraySize(ConstructUniformBuffersData));
 
     addTests<LineGLTest>({
         &LineGLTest::constructUniformBuffersAsync<2>,
-    //     &LineGLTest::constructUniformBuffersAsync<3>
+        &LineGLTest::constructUniformBuffersAsync<3>,
 
-    });
-
-    addTests<LineGLTest>({
         &LineGLTest::constructMove<2>,
-        // &LineGLTest::constructMove<3>,
+        &LineGLTest::constructMove<3>,
 
         &LineGLTest::constructMoveUniformBuffers<2>,
-        // &LineGLTest::constructMoveUniformBuffers<3>,
-
-        });
+        &LineGLTest::constructMoveUniformBuffers<3>});
 
     addInstancedTests<LineGLTest>({
         &LineGLTest::constructUniformBuffersInvalid<2>,
-        // &LineGLTest::constructUniformBuffersInvalid<3>
-
-    },
+        &LineGLTest::constructUniformBuffersInvalid<3>},
         Containers::arraySize(ConstructUniformBuffersInvalidData));
 
     addTests<LineGLTest>({
         &LineGLTest::setUniformUniformBuffersEnabled<2>,
-        // &LineGLTest::setUniformUniformBuffersEnabled<3>,
+        &LineGLTest::setUniformUniformBuffersEnabled<3>,
         &LineGLTest::bindBufferUniformBuffersNotEnabled<2>,
-        // &LineGLTest::bindBufferUniformBuffersNotEnabled<3>,
-    });
+        &LineGLTest::bindBufferUniformBuffersNotEnabled<3>});
 
     addInstancedTests<LineGLTest>({
         &LineGLTest::setMiterLengthLimitInvalid<2>,
-        // &LineGLTest::setMiterLengthLimitInvalid<3>
-
-    },
+        &LineGLTest::setMiterLengthLimitInvalid<3>},
         Containers::arraySize(SetMiterLengthLimitInvalidData));
 
     addInstancedTests<LineGLTest>({
         &LineGLTest::setMiterAngleLimitInvalid<2>,
-        // &LineGLTest::setMiterAngleLimitInvalid<3>
-
-    },
+        &LineGLTest::setMiterAngleLimitInvalid<3>},
         Containers::arraySize(SetMiterAngleLimitInvalidData));
 
-    addTests<LineGLTest>({&LineGLTest::setObjectIdNotEnabled<2>,
-        // &LineGLTest::setObjectIdNotEnabled<3>,
+    addTests<LineGLTest>({
+        &LineGLTest::setObjectIdNotEnabled<2>,
+        &LineGLTest::setObjectIdNotEnabled<3>,
         &LineGLTest::setWrongDrawOffset<2>,
-        // &LineGLTest::setWrongDrawOffset<3>
-
-    });
+        &LineGLTest::setWrongDrawOffset<3>});
 
     /* MSVC needs explicit type due to default template args */
     addTests<LineGLTest>({

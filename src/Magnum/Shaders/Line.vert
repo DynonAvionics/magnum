@@ -333,7 +333,26 @@ void main() {
         #endif
         vec3(nextPosition, 1.0)).xy;
     #elif defined(THREE_DIMENSIONS)
-    // TODO
+    highp const vec4 transformedPosition4 = transformationProjectionMatrix*
+        #ifdef INSTANCED_TRANSFORMATION
+        instancedTransformationMatrix*
+        #endif
+        vec4(position, 1.0);
+    highp const vec2 transformedPosition = transformedPosition4.xy/transformedPosition4.w;
+
+    highp const vec4 transformedPreviousPosition4 = transformationProjectionMatrix*
+        #ifdef INSTANCED_TRANSFORMATION
+        instancedTransformationMatrix*
+        #endif
+        vec4(previousPosition, 1.0);
+    highp const vec2 transformedPreviousPosition = transformedPreviousPosition4.xy/transformedPreviousPosition4.w;
+
+    highp const vec4 transformedNextPosition4 = transformationProjectionMatrix*
+        #ifdef INSTANCED_TRANSFORMATION
+        instancedTransformationMatrix*
+        #endif
+        vec4(nextPosition, 1.0);
+    highp const vec2 transformedNextPosition = transformedNextPosition4.xy/transformedNextPosition4.w;
     #else
     #error
     #endif
@@ -625,15 +644,9 @@ void main() {
     highp const vec2 pointDirection = screenspacePointDirection*2.0/viewportSize;
 
     #ifdef TWO_DIMENSIONS
-    gl_Position.xyzw = vec4(transformedPosition + pointDirection, 0.0, 1.0);
+    gl_Position = vec4(transformedPosition + pointDirection, 0.0, 1.0);
     #elif defined(THREE_DIMENSIONS)
-    // TODO 3D, how to handle perspective? multiply edgeDistance with w?
-    // TODO also how to handle depth?
-    gl_Position = transformationProjectionMatrix*
-        #ifdef INSTANCED_TRANSFORMATION
-        instancedTransformationMatrix*
-        #endif
-        position;
+    gl_Position = vec4(transformedPosition4.xy + pointDirection*transformedPosition4.w, transformedPosition4.zw);
     #else
     #error
     #endif
