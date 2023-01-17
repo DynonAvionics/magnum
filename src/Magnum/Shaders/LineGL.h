@@ -83,7 +83,6 @@ template<UnsignedInt dimensions> class MAGNUM_SHADERS_EXPORT LineGL: public GL::
         class Configuration;
         class CompileState;
 
-        // TODO actually move the last attribute elsewhere
         typedef typename GenericGL<dimensions>::Position Position;
 
         // TODO move to Generic?
