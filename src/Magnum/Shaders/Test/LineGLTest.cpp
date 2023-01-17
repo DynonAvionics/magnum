@@ -757,8 +757,9 @@ void LineGLTest::renderTeardown() {
 template<UnsignedInt dimensions> GL::Mesh generateLineMesh(Containers::StridedArrayView1D<const VectorTypeFor<dimensions, Float>> lineSegments) {
     struct Vertex {
         VectorTypeFor<dimensions, Float> previousPosition;
-        VectorTypeFor<dimensions + 1, Float> position;
+        VectorTypeFor<dimensions, Float> position;
         VectorTypeFor<dimensions, Float> nextPosition;
+        UnsignedInt annotation;
     };
 
     enum: Int {
@@ -771,48 +772,52 @@ template<UnsignedInt dimensions> GL::Mesh generateLineMesh(Containers::StridedAr
     /* Not NoInit, because we're subsequently checking for NaNs */
     Containers::Array<Vertex> vertices{ValueInit, lineSegments.size()*2};
     for(std::size_t i = 0; i != lineSegments.size(); ++i) {
-        vertices[i*2 + 0].position = {lineSegments[i], Float(LineUp|(i % 2 ? 0 : LineBegin))};
-        vertices[i*2 + 1].position = {lineSegments[i], Float(i % 2 ? 0 : LineBegin)};
+        vertices[i*2 + 0].position =
+            vertices[i*2 + 1].position =
+                lineSegments[i];
+        vertices[i*2 + 0].annotation = LineUp|(i % 2 ? 0 : LineBegin);
+        vertices[i*2 + 1].annotation = i % 2 ? 0 : LineBegin;
     }
 
     /* Mark caps if it's the beginning, the end or the segments are disjoint */
     for(std::size_t i: {std::size_t{0}, std::size_t{1}, vertices.size() - 2, vertices.size() - 1}) {
-        vertices[i].position[dimensions] = Int(vertices[i].position[dimensions])|LineCap;
+        vertices[i].annotation |= LineCap;
     }
     for(std::size_t i = 4; i < vertices.size(); i += 4) {
-        /* Compare everything except the last component, which is always
-           different */
-        if(VectorTypeFor<dimensions, Float>::pad(vertices[i - 2].position) ==
-           VectorTypeFor<dimensions, Float>::pad(vertices[i].position))
+        if(vertices[i - 2].position == vertices[i].position)
             continue;
         for(std::size_t j: {i - 2, i - 1, i + 0, i + 1}) {
-            vertices[j].position[dimensions] = Int(vertices[j].position[dimensions])|LineCap;
+            vertices[j].annotation |= LineCap;
         }
     }
 
     /* Prev positions for segment last vertices -- the other segment point */
     for(std::size_t i = 2; i < Containers::arraySize(vertices); i += 4) {
-        vertices[i + 0].previousPosition = vertices[i + 1].previousPosition =
-            VectorTypeFor<dimensions, Float>::pad(vertices[i - 2].position);
+        vertices[i + 0].previousPosition =
+            vertices[i + 1].previousPosition =
+                vertices[i - 2].position;
     }
     /* Prev positions for segment first vertices -- a neighbor segment, if any */
     for(std::size_t i = 4; i < Containers::arraySize(vertices); i += 4) {
-        if(Int(vertices[i].position[dimensions]) & LineCap)
+        if(vertices[i].annotation & LineCap)
             continue;
-        vertices[i + 0].previousPosition = vertices[i + 1].previousPosition =
-            VectorTypeFor<dimensions, Float>::pad(vertices[i - 4].position);
+        vertices[i + 0].previousPosition =
+            vertices[i + 1].previousPosition =
+                vertices[i - 4].position;
     }
     /* Next positions for segment first vertices -- the other segment point */
     for(std::size_t i = 0; i < Containers::arraySize(vertices) - 2; i += 4) {
-        vertices[i + 0].nextPosition = vertices[i + 1].nextPosition =
-            VectorTypeFor<dimensions, Float>::pad(vertices[i + 2].position);
+        vertices[i + 0].nextPosition =
+            vertices[i + 1].nextPosition =
+                vertices[i + 2].position;
     }
     /* Next positions for last vertices -- a neighbor segment, if any */
     for(std::size_t i = 2; i < Containers::arraySize(vertices) - 4; i += 4) {
-        if(Int(vertices[i].position[dimensions]) & LineCap)
+        if(vertices[i].annotation & LineCap)
             continue;
-        vertices[i + 0].nextPosition = vertices[i + 1].nextPosition =
-            VectorTypeFor<dimensions, Float>::pad(vertices[i + 4].position);
+        vertices[i + 0].nextPosition =
+            vertices[i + 1].nextPosition =
+                vertices[i + 4].position;
     }
 
     Containers::Array<UnsignedInt> indices;
@@ -828,7 +833,7 @@ template<UnsignedInt dimensions> GL::Mesh generateLineMesh(Containers::StridedAr
 
         /* Add also indices for the bevel in both orientations (one will always
            degenerate) */
-        if(!(Int(Math::abs(vertices[i*4 + 3].position[dimensions])) & LineCap)) {
+        if(!(vertices[i*4 + 3].annotation & LineCap)) {
             arrayAppend(indices, {
                 i*4 + 2,
                 i*4 + 3,
@@ -844,7 +849,8 @@ template<UnsignedInt dimensions> GL::Mesh generateLineMesh(Containers::StridedAr
     mesh.addVertexBuffer(GL::Buffer{vertices}, 0,
             LineGL2D::PreviousPosition{},
             LineGL2D::Position{},
-            LineGL2D::NextPosition{})
+            LineGL2D::NextPosition{},
+            LineGL2D::Annotation{})
         .setIndexBuffer(GL::Buffer{indices}, 0, GL::MeshIndexType::UnsignedInt)
         .setCount(indices.size());
 

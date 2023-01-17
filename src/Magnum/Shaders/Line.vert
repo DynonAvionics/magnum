@@ -173,38 +173,14 @@ layout(std140
 
 /* Inputs */
 
-// TODO put into a separate attribute so it can be using a smaller type? it'd
-//  need to contain also info about "the other line point is a cap" and
-//  possibly also info about the neigbor line, if it has a cap .. thus 5 bits
-//  in total
-/* The third component in 2D (or fourth in 3D) is a point marker. It's a
-   combination of bits indicating the following:
-
-    -   line up, in which case the point extends above the line to form a quad;
-        and conversely if not set the point extends below the line to form a
-        quad
-    -   line begin, in which case the second point of the segment is stored in
-        the nextPosition input, and the neighboring segment point (if any) is
-        stored in previousPosition; and conversely if not set the second point
-        of the segment is stored in the previousPosition input, and the
-        neighboring segment point (if any) is stored in nextPosition
-    -   line cap, in which case the neighboring segment point should be ignored
-        and instead a line cap formed; and conversely if not set the
-        neighboring segment points are meant to be used to form a line join */
-#define POINT_MARKER_UP_MASK 1u
-#define POINT_MARKER_BEGIN_MASK 2u
-#define POINT_MARKER_CAP_MASK 4u
 #ifdef EXPLICIT_ATTRIB_LOCATION
-layout(location = LINE_POSITION_ATTRIBUTE_LOCATION)
+layout(location = POSITION_ATTRIBUTE_LOCATION)
 #endif
 #ifdef TWO_DIMENSIONS
-in highp vec3 positionPointMarkerComponent;
-#define position positionPointMarkerComponent.xy
-#define pointMarkerComponent positionPointMarkerComponent.z
+in highp vec2 position;
 #elif defined(THREE_DIMENSIONS)
-in highp vec4 positionPointMarkerComponent;
-#define position positionPointMarkerComponent.xyz
-#define pointMarkerComponent positionPointMarkerComponent.w
+/* Last component is reserved for line distance */
+in highp vec3 position;
 #else
 #error
 #endif
@@ -230,6 +206,27 @@ in highp vec3 nextPosition;
 #else
 #error
 #endif
+
+/* Point annotation, ccombination of bits indicating the following:
+
+    -   line up, in which case the point extends above the line to form a quad;
+        and conversely if not set the point extends below the line to form a
+        quad
+    -   line begin, in which case the second point of the segment is stored in
+        the nextPosition input, and the neighboring segment point (if any) is
+        stored in previousPosition; and conversely if not set the second point
+        of the segment is stored in the previousPosition input, and the
+        neighboring segment point (if any) is stored in nextPosition
+    -   line cap, in which case the neighboring segment point should be ignored
+        and instead a line cap formed; and conversely if not set the
+        neighboring segment points are meant to be used to form a line join */
+#define ANNOTATION_UP_MASK 1u
+#define ANNOTATION_BEGIN_MASK 2u
+#define ANNOTATION_CAP_MASK 4u
+#ifdef EXPLICIT_ATTRIB_LOCATION
+layout(location = LINE_ANNOTATION_ATTRIBUTE_LOCATION)
+#endif
+in lowp uint annotation;
 
 #ifdef VERTEX_COLOR
 #ifdef EXPLICIT_ATTRIB_LOCATION
@@ -381,12 +378,11 @@ void main() {
                  v        v
 
        The POINT_MARKER_CAP_MASK is then used below. */
-    highp const uint pointMarker = uint(pointMarkerComponent);
-    highp const vec2 lineDirection = bool(pointMarker & POINT_MARKER_BEGIN_MASK) ?
+    highp const vec2 lineDirection = bool(annotation & ANNOTATION_BEGIN_MASK) ?
         transformedNextPosition - transformedPosition :
         transformedPosition - transformedPreviousPosition;
-    highp const float edgeSign = bool(pointMarker & POINT_MARKER_UP_MASK) ? 1.0 : -1.0;
-    highp const float neighborSign = bool(pointMarker & POINT_MARKER_BEGIN_MASK) ? -1.0 : 1.0;
+    highp const float edgeSign = bool(annotation & ANNOTATION_UP_MASK) ? 1.0 : -1.0;
+    highp const float neighborSign = bool(annotation & ANNOTATION_BEGIN_MASK) ? -1.0 : 1.0;
 
     /* Line direction and its length converted from the [-1, 1] unit square to
        the screen space so we properly take aspect ratio into account. In the
@@ -500,7 +496,7 @@ void main() {
        The signed center distance a sum of half segment length and the cap
        distance, multiplied by the cap sign (thus negative for points derived
        from A and positive for B). */
-    if(bool(pointMarker & POINT_MARKER_CAP_MASK)) {
+    if(bool(annotation & ANNOTATION_CAP_MASK)) {
         screenspacePointDirection =
             screenspaceLineDirectionNormalized*capDistance*neighborSign +
             screenspaceEdgeDirectionNormalized*edgeDistance*edgeSign;
@@ -524,7 +520,7 @@ void main() {
                   A                 B
 
             <--nd-1 [BEGIN]   [END] 3-nd-->  */
-        highp const vec2 neighborDirection = bool(pointMarker & POINT_MARKER_BEGIN_MASK) ?
+        highp const vec2 neighborDirection = bool(annotation & ANNOTATION_BEGIN_MASK) ?
             transformedPreviousPosition - transformedPosition :
             transformedNextPosition - transformedPosition;
         /* Screenspace neighbor direction and its length, calculated

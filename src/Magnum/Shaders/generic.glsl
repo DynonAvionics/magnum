@@ -26,9 +26,9 @@
 
 /* Kept consistent with GenericGL.h (tested in ShadersGenericGL_Test) */
 
-#define POSITION_ATTRIBUTE_LOCATION 0 /* also LinePosition */
-#define LINE_POSITION_ATTRIBUTE_LOCATION 0 /* also Position */
-#define TEXTURECOORDINATES_ATTRIBUTE_LOCATION 1
+#define POSITION_ATTRIBUTE_LOCATION 0
+#define TEXTURECOORDINATES_ATTRIBUTE_LOCATION 1 /* also LineAnnotation */
+#define LINE_ANNOTATION_ATTRIBUTE_LOCATION 1 /* also LineAnnotation */
 #define COLOR_ATTRIBUTE_LOCATION 2
 #define TANGENT_ATTRIBUTE_LOCATION 3 /* also LinePreviousPosition */
 #define LINE_PREVIOUS_POSITION_ATTRIBUTE_LOCATION 3 /* also Tangent */

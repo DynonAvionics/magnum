@@ -84,11 +84,14 @@ template<UnsignedInt dimensions> class MAGNUM_SHADERS_EXPORT LineGL: public GL::
         class CompileState;
 
         // TODO actually move the last attribute elsewhere
-        typedef typename GL::Attribute<0, Math::Vector<dimensions + 1, Float>> Position;
+        typedef typename GenericGL<dimensions>::Position Position;
 
         // TODO move to Generic?
         typedef GL::Attribute<3, VectorTypeFor<dimensions, Float>> PreviousPosition;
         typedef GL::Attribute<5, VectorTypeFor<dimensions, Float>> NextPosition;
+
+        // TODO document the bits
+        typedef GL::Attribute<1, UnsignedInt> Annotation;
 
         /**
          * @brief Three-component vertex color
