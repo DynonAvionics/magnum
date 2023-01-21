@@ -31,6 +31,17 @@
 #extension GL_ARB_shader_bit_encoding: require
 #endif
 
+/* Use the noperspective keyword to avoid artifacts in screen-space
+   interpolation if perspective projection is used in 3D. If not available,
+   it's worked around by dividing gl_Position with gl_Position.w (which is
+   extra instructions, so the noperspective keyword is preferred). */
+#ifndef GL_ES
+#define CAN_USE_NOPERSPECTIVE
+#elif defined(GL_ES) && defined(GL_NV_shader_noperspective_interpolation)
+#extension GL_NV_shader_noperspective_interpolation: require
+#define CAN_USE_NOPERSPECTIVE
+#endif
+
 #ifdef MULTI_DRAW
 #ifndef GL_ES
 #extension GL_ARB_shader_draw_parameters: require
@@ -258,8 +269,14 @@ in highp mat4 instancedTransformationMatrix;
 /* Outputs */
 
 // TODO document, maybe join together?
+#ifdef CAN_USE_NOPERSPECTIVE
+noperspective
+#endif
 out highp vec2 centerDistanceSigned;
 out highp float halfSegmentLength;
+#ifdef CAN_USE_NOPERSPECTIVE
+noperspective
+#endif
 out lowp float hasCap;
 
 #ifdef VERTEX_COLOR
@@ -643,6 +660,9 @@ void main() {
     gl_Position = vec4(transformedPosition + pointDirection, 0.0, 1.0);
     #elif defined(THREE_DIMENSIONS)
     gl_Position = vec4(transformedPosition4.xy + pointDirection*transformedPosition4.w, transformedPosition4.zw);
+    #ifndef CAN_USE_NOPERSPECTIVE
+    gl_Position /= gl_Position.w;
+    #endif
     #else
     #error
     #endif

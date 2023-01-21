@@ -27,6 +27,14 @@
 #extension GL_EXT_gpu_shader4: require
 #endif
 
+/* See the corresponding block in Line.vert for more information */
+#ifndef GL_ES
+#define CAN_USE_NOPERSPECTIVE
+#elif defined(GL_ES) && defined(GL_NV_shader_noperspective_interpolation)
+#extension GL_NV_shader_noperspective_interpolation: require
+#define CAN_USE_NOPERSPECTIVE
+#endif
+
 #ifndef NEW_GLSL
 #define fragmentColor gl_FragColor
 #define in varying
@@ -136,8 +144,14 @@ layout(std140
 
 /* Inputs */
 
+#ifdef CAN_USE_NOPERSPECTIVE
+noperspective
+#endif
 in highp vec2 centerDistanceSigned;
 in highp float halfSegmentLength;
+#ifdef CAN_USE_NOPERSPECTIVE
+noperspective
+#endif
 in lowp float hasCap;
 
 #ifdef VERTEX_COLOR
@@ -207,6 +221,10 @@ void main() {
     const highp float factor = smoothstep(width*0.5 - smoothness, width*0.5 + smoothness, distanceS);
 
 //     fragmentColor = vec4(centerDistanceSigned*0.5/vec2(halfSegmentLength + width*0.5, width*0.5) + vec2(0.5), 0.0, 1.0);
+//     return;
+
+
+//     fragmentColor = vec4(distance_/(width*0.5 + smoothness), 0.0, 1.0);
 //     return;
 
     fragmentColor = mix(

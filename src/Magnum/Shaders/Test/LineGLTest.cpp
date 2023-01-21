@@ -47,10 +47,14 @@
 #include "Magnum/Math/FunctionsBatch.h"
 #include "Magnum/Math/Matrix3.h"
 #include "Magnum/Math/Matrix4.h"
+#include "Magnum/MeshTools/Compile.h"
+#include "Magnum/Primitives/Cube.h"
+#include "Magnum/Shaders/PhongGL.h" /* for testing correct depth in 3D */
 #include "Magnum/Shaders/Generic.h"
 #include "Magnum/Shaders/Line.h"
 #include "Magnum/Shaders/LineGL.h"
 #include "Magnum/Trade/AbstractImporter.h"
+#include "Magnum/Trade/MeshData.h"
 
 #include "configure.h"
 
@@ -86,10 +90,13 @@ struct LineGLTest: GL::OpenGLTester {
     template<LineGL3D::Flag flag = LineGL3D::Flag{}> void renderDefaults3D();
 
     template<LineGL2D::Flag flag = LineGL2D::Flag{}> void renderLineCapsJoins2D();
+    /* These test the shader algorithms, which are independent of UBOs */
     void renderLineCapsJoins2DReversed();
     void renderLineCapsJoins2DTransformed();
 
-    template<LineGL3D::Flag flag = LineGL3D::Flag{}> void render3D();
+    template<LineGL3D::Flag flag = LineGL3D::Flag{}> void renderCube3D();
+    /* This test the shader algorithms, which are independent of UBOs */
+    void renderPerspective3D();
 
     template<class T, LineGL2D::Flag flag = LineGL2D::Flag{}> void renderVertexColor2D();
     template<class T, LineGL3D::Flag flag = LineGL3D::Flag{}> void renderVertexColor3D();
@@ -107,6 +114,7 @@ struct LineGLTest: GL::OpenGLTester {
         PluginManager::Manager<Trade::AbstractImporter> _manager{"nonexistent"};
 
         GL::Renderbuffer _color{NoCreate};
+        GL::Renderbuffer _depth{NoCreate};
         GL::Renderbuffer _objectId{NoCreate};
         GL::Framebuffer _framebuffer{NoCreate};
 };
@@ -271,10 +279,25 @@ const struct {
     const char* name;
     Float width;
     Float smoothness;
+    Containers::Optional<Float> miterLengthLimit;
+    Containers::Optional<LineCapStyle> capStyle;
+    Containers::Optional<LineJoinStyle> joinStyle;
+    bool renderSolidCube;
     const char* expected;
-} Render3DData[]{
-    {"flat", 1.0f, 0.0f, "flat3D.tga"},
-    {"smooth, wide", 10.0f, 1.0f, "smooth3D.tga"}
+} RenderCube3DData[]{
+    {"caps & joins default, flat, single-pixel",
+        1.0f, 0.0f, 8.0f, {}, {}, false,
+        "cube3D-flat-single-pixel.tga"},
+    {"caps square, joins miter",
+        10.0f, 1.0f, 8.0f, {}, {}, false,
+        "cube3D-caps-square-joins-miter.tga"},
+    {"caps butt, joins bevel",
+        10.0f, 1.0f, {}, LineCapStyle::Butt, LineJoinStyle::Bevel, false,
+        "cube3D-caps-butt-joins-bevel.tga"},
+    {"depth", // TODO fix
+        /* Not smooth, as the cut-off pieces are jaggy anyway */
+        10.0f, 0.0f, 8.0f, {}, {}, true,
+        "cube3D-depth.tga"},
 };
 
 LineGLTest::LineGLTest() {
@@ -350,10 +373,14 @@ LineGLTest::LineGLTest() {
 
     /* MSVC needs explicit type due to default template args */
     addInstancedTests<LineGLTest>({
-        &LineGLTest::render3D,
-        &LineGLTest::render3D<LineGL3D::Flag::UniformBuffers>},
-        Containers::arraySize(Render3DData),
+        &LineGLTest::renderCube3D,
+        &LineGLTest::renderCube3D<LineGL3D::Flag::UniformBuffers>},
+        Containers::arraySize(RenderCube3DData),
         &LineGLTest::renderSetupLarge,
+        &LineGLTest::renderTeardown);
+
+    addTests({&LineGLTest::renderPerspective3D},
+        &LineGLTest::renderSetupSmall,
         &LineGLTest::renderTeardown);
 
     /* MSVC needs explicit type due to default template args */
@@ -362,11 +389,15 @@ LineGLTest::LineGLTest() {
         &LineGLTest::renderVertexColor2D<Color3, LineGL2D::Flag::UniformBuffers>,
         &LineGLTest::renderVertexColor2D<Color4>,
         &LineGLTest::renderVertexColor2D<Color4, LineGL2D::Flag::UniformBuffers>,
-        // &LineGLTest::renderVertexColor3D<Color3>,
-        // &LineGLTest::renderVertexColor3D<Color3, LineGL2D::Flag::UniformBuffers>,
-        // &LineGLTest::renderVertexColor3D<Color4>,
-        // &LineGLTest::renderVertexColor3D<Color4, LineGL2D::Flag::UniformBuffers>,
-        },
+        &LineGLTest::renderVertexColor3D<Color3>,
+        &LineGLTest::renderVertexColor3D<Color3, LineGL3D::Flag::UniformBuffers>,
+        &LineGLTest::renderVertexColor3D<Color4>,
+        &LineGLTest::renderVertexColor3D<Color4, LineGL3D::Flag::UniformBuffers>,
+
+        &LineGLTest::renderObjectId2D,
+        &LineGLTest::renderObjectId2D<LineGL2D::Flag::UniformBuffers>,
+        &LineGLTest::renderObjectId3D,
+        &LineGLTest::renderObjectId3D<LineGL3D::Flag::UniformBuffers>},
         &LineGLTest::renderSetupSmall,
         &LineGLTest::renderTeardown);
 
@@ -736,12 +767,17 @@ void LineGLTest::renderSetupLarge() {
     /* The geometry should be generated in CCW order, enable face culling to
        verify that */
     GL::Renderer::enable(GL::Renderer::Feature::FaceCulling);
+    /* Depth test enabled only in certain cases */
 
     _color = GL::Renderbuffer{};
     _color.setStorage(GL::RenderbufferFormat::RGBA8, RenderSizeLarge);
+    _depth = GL::Renderbuffer{};
+    _depth.setStorage(GL::RenderbufferFormat::DepthComponent24, RenderSizeLarge);
     _framebuffer = GL::Framebuffer{{{}, RenderSizeLarge}};
-    _framebuffer.attachRenderbuffer(GL::Framebuffer::ColorAttachment{0}, _color)
-        .clear(GL::FramebufferClear::Color)
+    _framebuffer
+        .attachRenderbuffer(GL::Framebuffer::ColorAttachment{0}, _color)
+        .attachRenderbuffer(GL::Framebuffer::BufferAttachment::Depth, _depth)
+        .clear(GL::FramebufferClear::Color|GL::FramebufferClear::Depth)
         .bind();
 }
 
@@ -754,18 +790,24 @@ void LineGLTest::renderSetupSmall() {
     /* The geometry should be generated in CCW order, enable face culling to
        verify that */
     GL::Renderer::enable(GL::Renderer::Feature::FaceCulling);
+    /* Depth test enabled only in certain cases */
 
     _color = GL::Renderbuffer{};
     _color.setStorage(GL::RenderbufferFormat::RGBA8, RenderSizeSmall);
+    _depth = GL::Renderbuffer{};
+    _depth.setStorage(GL::RenderbufferFormat::DepthComponent24, RenderSizeSmall);
     _framebuffer = GL::Framebuffer{{{}, RenderSizeSmall}};
-    _framebuffer.attachRenderbuffer(GL::Framebuffer::ColorAttachment{0}, _color)
-        .clear(GL::FramebufferClear::Color)
+    _framebuffer
+        .attachRenderbuffer(GL::Framebuffer::ColorAttachment{0}, _color)
+        .attachRenderbuffer(GL::Framebuffer::BufferAttachment::Depth, _depth)
+        .clear(GL::FramebufferClear::Color|GL::FramebufferClear::Depth)
         .bind();
 }
 
 void LineGLTest::renderTeardown() {
     _framebuffer = GL::Framebuffer{NoCreate};
     _color = GL::Renderbuffer{NoCreate};
+    _depth = GL::Renderbuffer{NoCreate};
 }
 
 /* A barebones utility for generating a line mesh. Embedded directly in the
@@ -788,7 +830,7 @@ enum: Int {
 template<UnsignedInt dimensions> Containers::Array<Vertex<dimensions>> generateLineMeshVertices(Containers::StridedArrayView1D<const VectorTypeFor<dimensions, Float>> lineSegments) {
     CORRADE_INTERNAL_ASSERT(lineSegments.size() % 2 == 0);
 
-    Containers::Array<Vertex<dimensions>> vertices{NoInit, lineSegments.size()*2};
+    Containers::Array<Vertex<dimensions>> vertices{ValueInit, lineSegments.size()*2};
     for(std::size_t i = 0; i != lineSegments.size(); ++i) {
         vertices[i*2 + 0].position =
             vertices[i*2 + 1].position =
@@ -1281,8 +1323,8 @@ void LineGLTest::renderLineCapsJoins2DTransformed() {
         (DebugTools::CompareImageToFile{_manager}));
 }
 
-template<LineGL3D::Flag flag> void LineGLTest::render3D() {
-    auto&& data = Render3DData[testCaseInstanceId()];
+template<LineGL3D::Flag flag> void LineGLTest::renderCube3D() {
+    auto&& data = RenderCube3DData[testCaseInstanceId()];
     setTestCaseDescription(data.name);
 
     if(flag == LineGL3D::Flag::UniformBuffers) {
@@ -1346,7 +1388,14 @@ template<LineGL3D::Flag flag> void LineGLTest::render3D() {
         vertices[i].annotation &= ~LineCap;
     }
 
-    // TODO bevel triangle for the two extra edges
+    /* Add indices for the two newly created joins */
+    arrayAppend(indices, {
+        14u, 15u, 0u,
+        0u, 15u, 1u,
+
+        30u, 31u, 16u,
+        16u, 31u, 17u
+    });
 
     GL::Mesh lines;
     lines.addVertexBuffer(GL::Buffer{vertices}, 0,
@@ -1357,10 +1406,33 @@ template<LineGL3D::Flag flag> void LineGLTest::render3D() {
         .setIndexBuffer(GL::Buffer{indices}, 0, GL::MeshIndexType::UnsignedInt)
         .setCount(indices.size());
 
+    const Matrix4 projection = Matrix4::perspectiveProjection(50.0_degf, 1.0f, 0.1f, 10.0f);
+    const Matrix4 transformation =
+        Matrix4::translation({-0.125f, 0.25f, -5.0f})*
+        Matrix4::rotationX(25.0_degf)*
+        Matrix4::rotationY(30.0_degf);
+
+    if(data.renderSolidCube) {
+        GL::Renderer::enable(GL::Renderer::Feature::DepthTest);
+
+        PhongGL shader;
+        shader.setLightPositions({{-1.0f, 2.0f, 3.0f, 0.0f}})
+            .setProjectionMatrix(projection)
+            .setTransformationMatrix(transformation)
+            .setNormalMatrix(transformation.normalMatrix())
+            .setDiffuseColor(0xff0000_rgbf)
+            .draw(MeshTools::compile(Primitives::cubeSolid()));
+
+        MAGNUM_VERIFY_NO_GL_ERROR();
+
+        GL::Renderer::setDepthFunction(GL::Renderer::DepthFunction::LessOrEqual);
+        GL::Renderer::setDepthMask(false);
+    }
+
     LineGL3D::Configuration configuration;
     configuration.setFlags(flag);
-    // if(data.capStyle) configuration.setCapStyle(*data.capStyle);
-    // if(data.joinStyle) configuration.setJoinStyle(*data.joinStyle);
+    if(data.capStyle) configuration.setCapStyle(*data.capStyle);
+    if(data.joinStyle) configuration.setJoinStyle(*data.joinStyle);
     LineGL3D shader{configuration};
     shader.setViewportSize(Vector2{RenderSizeLarge});
 
@@ -1373,22 +1445,17 @@ template<LineGL3D::Flag flag> void LineGLTest::render3D() {
 
     if(flag == LineGL3D::Flag{}) {
         shader
-            .setTransformationProjectionMatrix(
-                Matrix4::perspectiveProjection(45.0_degf, 1.0f, 0.1f, 10.0f)*
-                Matrix4::translation({-0.125f, 0.25f, -5.0f})*
-                Matrix4::rotationX(25.0_degf)*
-                Matrix4::rotationY(30.0_degf))
+            .setTransformationProjectionMatrix(projection*transformation)
             .setWidth(data.width)
             .setSmoothness(data.smoothness)
             .setColor(0x80808080_rgbaf);
-        // if(data.miterLengthLimit)
-            shader.setMiterLengthLimit(8);
-        // if(data.miterAngleLimit)
-        //     shader.setMiterAngleLimit(*data.miterAngleLimit);
+        if(data.miterLengthLimit)
+            shader.setMiterLengthLimit(*data.miterLengthLimit);
         shader.draw(lines);
     } else if(flag == LineGL3D::Flag::UniformBuffers) {
         GL::Buffer transformationProjectionUniform{GL::Buffer::TargetHint::Uniform, {
             TransformationProjectionUniform3D{}
+                .setTransformationProjectionMatrix(projection*transformation)
         }};
         GL::Buffer drawUniform{GL::Buffer::TargetHint::Uniform, {
             LineDrawUniform{}
@@ -1399,10 +1466,8 @@ template<LineGL3D::Flag flag> void LineGLTest::render3D() {
             .setWidth(data.width)
             .setSmoothness(data.smoothness)
             .setColor(0x80808080_rgbaf);
-        // if(data.miterLengthLimit)
-        //     materialUniformData->setMiterLengthLimit(*data.miterLengthLimit);
-        // if(data.miterAngleLimit)
-        //     materialUniformData->setMiterAngleLimit(*data.miterAngleLimit);
+        if(data.miterLengthLimit)
+            materialUniformData->setMiterLengthLimit(*data.miterLengthLimit);
         GL::Buffer materialUniform{materialUniformData};
 
         shader
@@ -1411,6 +1476,12 @@ template<LineGL3D::Flag flag> void LineGLTest::render3D() {
             .bindMaterialBuffer(materialUniform)
             .draw(lines);
     } else CORRADE_INTERNAL_ASSERT_UNREACHABLE();
+
+    if(data.renderSolidCube) {
+        GL::Renderer::disable(GL::Renderer::Feature::DepthTest);
+        GL::Renderer::setDepthFunction(GL::Renderer::DepthFunction::Less);
+        GL::Renderer::setDepthMask(true);
+    }
 
     GL::Renderer::disable(GL::Renderer::Feature::Blending);
 
@@ -1426,6 +1497,35 @@ template<LineGL3D::Flag flag> void LineGLTest::render3D() {
         /* Dropping the alpha channel, as it's always 1.0 */
         Containers::arrayCast<Color3ub>(image.pixels<Color4ub>()),
         Utility::Path::join({SHADERS_TEST_DIR, "LineTestFiles", data.expected}),
+        (DebugTools::CompareImageToFile{_manager}));
+}
+
+void LineGLTest::renderPerspective3D() {
+    /* Verify that perspective-correct interpolation isn't used (which would
+       cause significant artifacts) */
+    GL::Mesh lines = generateLineMesh({
+        {0.0f, -1.0f, 10.0f}, {0.0f, 7.5f, -10.0f}
+    });
+
+    LineGL3D shader;
+    shader.setViewportSize(Vector2{RenderSizeSmall})
+        .setTransformationProjectionMatrix(
+            Matrix4::perspectiveProjection(50.0_degf, 1.0f, 0.1f, 50.0f)*
+            Matrix4::translation({0.0f, 0.0f, -13.0f}))
+        .setWidth(10.0f)
+        .setSmoothness(1.0f)
+        .draw(lines);
+
+    MAGNUM_VERIFY_NO_GL_ERROR();
+
+    if(!(_manager.loadState("AnyImageImporter") & PluginManager::LoadState::Loaded) ||
+       !(_manager.loadState("TgaImporter") & PluginManager::LoadState::Loaded))
+        CORRADE_SKIP("AnyImageImporter / TgaImporter plugins not found.");
+
+    CORRADE_COMPARE_WITH(
+        /* Dropping the alpha channel, as it's always 1.0 */
+        Containers::arrayCast<Color3ub>(_framebuffer.read(_framebuffer.viewport(), {PixelFormat::RGBA8Unorm}).pixels<Color4ub>()),
+        Utility::Path::join(SHADERS_TEST_DIR, "LineTestFiles/perspective3D.tga"),
         (DebugTools::CompareImageToFile{_manager}));
 }
 
@@ -1508,8 +1608,99 @@ template<class T, LineGL2D::Flag flag> void LineGLTest::renderVertexColor2D() {
     CORRADE_COMPARE_WITH(
         /* Dropping the alpha channel, as it's always 1.0 */
         Containers::arrayCast<Color3ub>(_framebuffer.read(_framebuffer.viewport(), {PixelFormat::RGBA8Unorm}).pixels<Color4ub>()),
-        Utility::Path::join(SHADERS_TEST_DIR, "LineTestFiles/vertex-color2D.tga"),
+        Utility::Path::join(SHADERS_TEST_DIR, "LineTestFiles/vertex-color.tga"),
         (DebugTools::CompareImageToFile{_manager}));
+}
+
+template<class T, LineGL3D::Flag flag> void LineGLTest::renderVertexColor3D() {
+    if(flag == LineGL3D::Flag::UniformBuffers) {
+        setTestCaseTemplateName({T::Size == 3 ? "Color3" : "Color4", "Flag::UniformBuffers"});
+
+        #ifndef MAGNUM_TARGET_GLES
+        if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
+            CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
+        #endif
+    } else {
+        setTestCaseTemplateName(T::Size == 3 ? "Color3" : "Color4");
+    }
+
+    /* Same as renderVertexColor2D(), except that the positions are 3D with
+       varying Z. But the (default) projection is orthographic so the output is
+       the same -- nothing 3D-specific to test here. */
+    GL::Mesh lines = generateLineMesh({
+        {-0.8f, 0.5f, 1.0f}, {-0.5f, -0.5f, -1.0f},
+        {-0.5f, -0.5f, -1.0f}, {0.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 0.0f}, {0.5f, -0.5f, 0.5f},
+        {0.5f, -0.5f, 0.5f}, {0.8f, 0.5f, -1.0f}
+    });
+
+    /* Each line segment from above is four points */
+    T colors[]{
+        0xff0000_rgbf, 0xff0000_rgbf, 0xffff00_rgbf, 0xffff00_rgbf,
+        0xffff00_rgbf, 0xffff00_rgbf, 0x00ffff_rgbf, 0x00ffff_rgbf,
+        0x00ffff_rgbf, 0x00ffff_rgbf, 0x00ff00_rgbf, 0x00ff00_rgbf,
+        0x00ff00_rgbf, 0x00ff00_rgbf, 0x0000ff_rgbf, 0x0000ff_rgbf
+    };
+    if(std::is_same<T, Color3>::value)
+        lines.addVertexBuffer(GL::Buffer{colors}, 0, LineGL3D::Color3{});
+    else
+        lines.addVertexBuffer(GL::Buffer{colors}, 0, LineGL3D::Color4{});
+
+    LineGL3D shader{LineGL3D::Configuration{}
+        .setFlags(LineGL3D::Flag::VertexColor|flag)
+        .setCapStyle(LineCapStyle::Triangle)};
+    shader.setViewportSize(Vector2{RenderSizeSmall});
+
+    /* Set background to blue as well so we don't have too much aliasing */
+    GL::Renderer::setClearColor(0x000080_rgbf);
+    _framebuffer.clear(GL::FramebufferClear::Color);
+
+    if(flag == LineGL3D::Flag{}) {
+        shader
+            /* Background should stay blue, foreground should have no blue */
+            .setBackgroundColor(0x000080_rgbf)
+            .setColor(0x999900_rgbf)
+            .setWidth(4.0f)
+            .setSmoothness(1.0f)
+            .draw(lines);
+    } else if(flag == LineGL3D::Flag::UniformBuffers) {
+        GL::Buffer transformationProjectionUniform{GL::Buffer::TargetHint::Uniform, {
+            TransformationProjectionUniform3D{}
+        }};
+        GL::Buffer drawUniform{GL::Buffer::TargetHint::Uniform, {
+            LineDrawUniform{}
+        }};
+        GL::Buffer materialUniform{GL::Buffer::TargetHint::Uniform, {
+            LineMaterialUniform{}
+                /* Background should stay blue, foreground should have no blue */
+                .setBackgroundColor(0x000080_rgbf)
+                .setColor(0x999900_rgbf)
+                .setWidth(4.0f)
+                .setSmoothness(1.0f)
+        }};
+        shader
+            .bindTransformationProjectionBuffer(transformationProjectionUniform)
+            .bindDrawBuffer(drawUniform)
+            .bindMaterialBuffer(materialUniform)
+            .draw(lines);
+    } else CORRADE_INTERNAL_ASSERT_UNREACHABLE();
+
+    MAGNUM_VERIFY_NO_GL_ERROR();
+
+    if(!(_manager.loadState("AnyImageImporter") & PluginManager::LoadState::Loaded) ||
+       !(_manager.loadState("TgaImporter") & PluginManager::LoadState::Loaded))
+        CORRADE_SKIP("AnyImageImporter / TgaImporter plugins not found.");
+
+    CORRADE_COMPARE_WITH(
+        /* Dropping the alpha channel, as it's always 1.0 */
+        Containers::arrayCast<Color3ub>(_framebuffer.read(_framebuffer.viewport(), {PixelFormat::RGBA8Unorm}).pixels<Color4ub>()),
+        Utility::Path::join(SHADERS_TEST_DIR, "LineTestFiles/vertex-color.tga"),
+        (DebugTools::CompareImageToFile{_manager}));
+}
+
+template<class T, LineGL3D::Flag flag> void LineGLTest::renderObjectId2D() {
+    // TODO verify that it gets correctly written also in the smooth edges and
+    //  in circular/triangle (thus, instanced?!)
 }
 
 }}}}
