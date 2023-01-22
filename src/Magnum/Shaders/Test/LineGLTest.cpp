@@ -39,6 +39,7 @@
 #include "Magnum/GL/Extensions.h"
 #include "Magnum/GL/Framebuffer.h"
 #include "Magnum/GL/Mesh.h"
+#include "Magnum/GL/MeshView.h"
 #include "Magnum/GL/OpenGLTester.h"
 #include "Magnum/GL/Renderbuffer.h"
 #include "Magnum/GL/RenderbufferFormat.h"
@@ -300,6 +301,51 @@ const struct {
         "cube3D-depth.tga"},
 };
 
+const struct {
+    const char* name;
+    Float width;
+    Float smoothness;
+    LineCapStyle capStyle;
+} RenderObjectIdData[]{
+    {"flat, square caps", 10.0f, 0.0f, LineCapStyle::Square},
+    {"flat, round caps", 10.0f, 0.0f, LineCapStyle::Round},
+    {"smooth, square caps", 4.0f, 3.0f, LineCapStyle::Square},
+};
+
+const struct {
+    const char* name;
+    UnsignedInt expectedId[3];
+    LineGL2D::Flags flags;
+} RenderInstancedData[]{
+    {"",
+        {}, {}},
+    {"object ID",
+        {1000, 1000, 1000}, LineGL2D::Flag::ObjectId},
+    {"instanced object ID",
+        {1211, 5627, 36363}, LineGL2D::Flag::InstancedObjectId},
+};
+
+const struct {
+    const char* name;
+    UnsignedInt expectedId[3];
+    LineGL2D::Flags flags;
+    UnsignedInt materialCount, drawCount;
+    UnsignedInt uniformIncrement;
+} RenderMultiData[]{
+    {"bind with offset",
+        {}, {}, 1, 1, 16},
+    {"bind with offset, object ID",
+        {1211, 5627, 36363}, LineGL2D::Flag::ObjectId, 1, 1, 16},
+    {"draw offset",
+        {}, {}, 2, 3, 1},
+    {"draw offset, object ID",
+        {1211, 5627, 36363}, LineGL2D::Flag::ObjectId, 2, 3, 1},
+    {"multidraw",
+        {}, LineGL2D::Flag::MultiDraw, 2, 3, 1},
+    {"multidraw, object ID",
+        {1211, 5627, 36363}, LineGL2D::Flag::MultiDraw|LineGL2D::Flag::ObjectId, 2, 3, 1},
+};
+
 LineGLTest::LineGLTest() {
     addInstancedTests<LineGLTest>({
         &LineGLTest::construct<2>,
@@ -392,12 +438,33 @@ LineGLTest::LineGLTest() {
         &LineGLTest::renderVertexColor3D<Color3>,
         &LineGLTest::renderVertexColor3D<Color3, LineGL3D::Flag::UniformBuffers>,
         &LineGLTest::renderVertexColor3D<Color4>,
-        &LineGLTest::renderVertexColor3D<Color4, LineGL3D::Flag::UniformBuffers>,
+        &LineGLTest::renderVertexColor3D<Color4, LineGL3D::Flag::UniformBuffers>},
+        &LineGLTest::renderSetupSmall,
+        &LineGLTest::renderTeardown);
 
+    /* MSVC needs explicit type due to default template args */
+    addInstancedTests<LineGLTest>({
         &LineGLTest::renderObjectId2D,
         &LineGLTest::renderObjectId2D<LineGL2D::Flag::UniformBuffers>,
         &LineGLTest::renderObjectId3D,
         &LineGLTest::renderObjectId3D<LineGL3D::Flag::UniformBuffers>},
+        Containers::arraySize(RenderObjectIdData),
+        &LineGLTest::renderSetupSmall,
+        &LineGLTest::renderTeardown);
+
+    /* MSVC needs explicit type due to default template args */
+    addInstancedTests<LineGLTest>({
+        &LineGLTest::renderInstanced2D,
+        &LineGLTest::renderInstanced2D<LineGL2D::Flag::UniformBuffers>,
+        &LineGLTest::renderInstanced3D,
+        &LineGLTest::renderInstanced3D<LineGL2D::Flag::UniformBuffers>},
+        Containers::arraySize(RenderInstancedData),
+        &LineGLTest::renderSetupSmall,
+        &LineGLTest::renderTeardown);
+
+    addInstancedTests({&LineGLTest::renderMulti2D,
+                       &LineGLTest::renderMulti3D},
+        Containers::arraySize(RenderMultiData),
         &LineGLTest::renderSetupSmall,
         &LineGLTest::renderTeardown);
 
@@ -417,7 +484,7 @@ template<UnsignedInt dimensions> void LineGLTest::construct() {
     setTestCaseTemplateName(Utility::format("{}", dimensions));
 
     #ifndef MAGNUM_TARGET_GLES
-    if((data.flags & LineGL2D::Flag::ObjectId) && !GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
         CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
     #endif
 
@@ -440,6 +507,11 @@ template<UnsignedInt dimensions> void LineGLTest::construct() {
 
 template<UnsignedInt dimensions> void LineGLTest::constructAsync() {
     setTestCaseTemplateName(Utility::format("{}", dimensions));
+
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
 
     typename LineGL<dimensions>::CompileState state = LineGL<dimensions>::compile(typename LineGL<dimensions>::Configuration{}
         .setFlags(LineGL2D::Flag::VertexColor));
@@ -468,10 +540,10 @@ template<UnsignedInt dimensions> void LineGLTest::constructUniformBuffers() {
     setTestCaseTemplateName(Utility::format("{}", dimensions));
 
     #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
     if((data.flags & LineGL2D::Flag::UniformBuffers) && !GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
         CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
-    if((data.flags & LineGL2D::Flag::ObjectId) && !GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
-        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
     #endif
 
     if(data.flags >= LineGL2D::Flag::MultiDraw) {
@@ -513,6 +585,8 @@ template<UnsignedInt dimensions> void LineGLTest::constructUniformBuffersAsync()
     setTestCaseTemplateName(Utility::format("{}", dimensions));
 
     #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
     if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
         CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
     #endif
@@ -545,6 +619,11 @@ template<UnsignedInt dimensions> void LineGLTest::constructUniformBuffersAsync()
 
 template<UnsignedInt dimensions> void LineGLTest::constructMove() {
     setTestCaseTemplateName(Utility::format("{}", dimensions));
+
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
 
     LineGL<dimensions> a{typename LineGL<dimensions>::Configuration{}
         .setFlags(LineGL<dimensions>::Flag::VertexColor)};
@@ -626,6 +705,8 @@ template<UnsignedInt dimensions> void LineGLTest::setUniformUniformBuffersEnable
     CORRADE_SKIP_IF_NO_ASSERT();
 
     #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
     if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
         CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
     #endif
@@ -662,6 +743,11 @@ template<UnsignedInt dimensions> void LineGLTest::bindBufferUniformBuffersNotEna
 
     CORRADE_SKIP_IF_NO_ASSERT();
 
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
     GL::Buffer buffer;
     LineGL<dimensions> shader;
 
@@ -691,6 +777,11 @@ template<UnsignedInt dimensions> void LineGLTest::setMiterLengthLimitInvalid() {
 
     CORRADE_SKIP_IF_NO_ASSERT();
 
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
     GL::Buffer buffer;
     LineGL<dimensions> shader{typename LineGL<dimensions>::Configuration{}
         .setJoinStyle(data.joinStyle)
@@ -710,6 +801,11 @@ template<UnsignedInt dimensions> void LineGLTest::setMiterAngleLimitInvalid() {
 
     CORRADE_SKIP_IF_NO_ASSERT();
 
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
     GL::Buffer buffer;
     LineGL<dimensions> shader{typename LineGL<dimensions>::Configuration{}
         .setJoinStyle(data.joinStyle)
@@ -727,6 +823,11 @@ template<UnsignedInt dimensions> void LineGLTest::setObjectIdNotEnabled() {
 
     CORRADE_SKIP_IF_NO_ASSERT();
 
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
     LineGL<dimensions> shader;
 
     std::ostringstream out;
@@ -742,6 +843,8 @@ template<UnsignedInt dimensions> void LineGLTest::setWrongDrawOffset() {
     CORRADE_SKIP_IF_NO_ASSERT();
 
     #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
     if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
         CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
     #endif
@@ -761,9 +864,6 @@ template<UnsignedInt dimensions> void LineGLTest::setWrongDrawOffset() {
 constexpr Vector2i RenderSizeLarge{128, 128};
 
 void LineGLTest::renderSetupLarge() {
-    /* Pick a color that's directly representable on RGBA4 as well to reduce
-       artifacts */
-    GL::Renderer::setClearColor(0x111111_rgbf);
     /* The geometry should be generated in CCW order, enable face culling to
        verify that */
     GL::Renderer::enable(GL::Renderer::Feature::FaceCulling);
@@ -771,22 +871,28 @@ void LineGLTest::renderSetupLarge() {
 
     _color = GL::Renderbuffer{};
     _color.setStorage(GL::RenderbufferFormat::RGBA8, RenderSizeLarge);
+    _objectId = GL::Renderbuffer{};
+    _objectId.setStorage(GL::RenderbufferFormat::R32UI, RenderSizeLarge);
     _depth = GL::Renderbuffer{};
     _depth.setStorage(GL::RenderbufferFormat::DepthComponent24, RenderSizeLarge);
     _framebuffer = GL::Framebuffer{{{}, RenderSizeLarge}};
     _framebuffer
         .attachRenderbuffer(GL::Framebuffer::ColorAttachment{0}, _color)
+        .attachRenderbuffer(GL::Framebuffer::ColorAttachment{1}, _objectId)
         .attachRenderbuffer(GL::Framebuffer::BufferAttachment::Depth, _depth)
-        .clear(GL::FramebufferClear::Color|GL::FramebufferClear::Depth)
+        .mapForDraw({
+            {LineGL2D::ColorOutput, GL::Framebuffer::ColorAttachment{0}},
+            {LineGL2D::ObjectIdOutput, GL::Framebuffer::ColorAttachment{1}}
+        })
+        .clearDepth(1.0f)
+        .clearColor(0, 0x111111_rgbf)
+        .clearColor(1, Vector4ui{27})
         .bind();
 }
 
 constexpr Vector2i RenderSizeSmall{80, 80};
 
 void LineGLTest::renderSetupSmall() {
-    /* Pick a color that's directly representable on RGBA4 as well to reduce
-       artifacts */
-    GL::Renderer::setClearColor(0x111111_rgbf);
     /* The geometry should be generated in CCW order, enable face culling to
        verify that */
     GL::Renderer::enable(GL::Renderer::Feature::FaceCulling);
@@ -794,19 +900,29 @@ void LineGLTest::renderSetupSmall() {
 
     _color = GL::Renderbuffer{};
     _color.setStorage(GL::RenderbufferFormat::RGBA8, RenderSizeSmall);
+    _objectId = GL::Renderbuffer{};
+    _objectId.setStorage(GL::RenderbufferFormat::R32UI, RenderSizeLarge);
     _depth = GL::Renderbuffer{};
     _depth.setStorage(GL::RenderbufferFormat::DepthComponent24, RenderSizeSmall);
     _framebuffer = GL::Framebuffer{{{}, RenderSizeSmall}};
     _framebuffer
         .attachRenderbuffer(GL::Framebuffer::ColorAttachment{0}, _color)
+        .attachRenderbuffer(GL::Framebuffer::ColorAttachment{1}, _objectId)
         .attachRenderbuffer(GL::Framebuffer::BufferAttachment::Depth, _depth)
-        .clear(GL::FramebufferClear::Color|GL::FramebufferClear::Depth)
+        .mapForDraw({
+            {LineGL2D::ColorOutput, GL::Framebuffer::ColorAttachment{0}},
+            {LineGL2D::ObjectIdOutput, GL::Framebuffer::ColorAttachment{1}}
+        })
+        .clearDepth(1.0f)
+        .clearColor(0, 0x111111_rgbf)
+        .clearColor(1, Vector4ui{27})
         .bind();
 }
 
 void LineGLTest::renderTeardown() {
     _framebuffer = GL::Framebuffer{NoCreate};
     _color = GL::Renderbuffer{NoCreate};
+    _objectId = GL::Renderbuffer{NoCreate};
     _depth = GL::Renderbuffer{NoCreate};
 }
 
@@ -946,6 +1062,11 @@ template<LineGL2D::Flag flag> void LineGLTest::renderDefaults2D() {
         #endif
     }
 
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
     GL::Mesh lines = generateLineMesh({
         /* A / line from the top to bottom */
         {-0.0f, 0.5f}, {-0.5f, -0.5f},
@@ -1013,6 +1134,11 @@ template<LineGL3D::Flag flag> void LineGLTest::renderDefaults3D() {
             CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
         #endif
     }
+
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
 
     /* Same as in the 2D case, just with a varying Z coordinate added. As the
        implicit projection is orthographic, this should result in the exact
@@ -1138,6 +1264,11 @@ template<LineGL2D::Flag flag> void LineGLTest::renderLineCapsJoins2D() {
         #endif
     }
 
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
     GL::Mesh lines = generateLineMesh<2>(RenderLineCapsJoins2DLineData);
 
     LineGL2D::Configuration configuration;
@@ -1217,6 +1348,11 @@ void LineGLTest::renderLineCapsJoins2DReversed() {
     auto&& data = RenderLineCapsJoins2DData[testCaseInstanceId()];
     setTestCaseDescription(data.name);
 
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
     /* As this verifies mainly the algorithm, there's no variant with UBOs --
        those are sufficiently tested elsewhere */
 
@@ -1271,6 +1407,11 @@ void LineGLTest::renderLineCapsJoins2DReversed() {
 void LineGLTest::renderLineCapsJoins2DTransformed() {
     auto&& data = RenderLineCapsJoins2DData[testCaseInstanceId()];
     setTestCaseDescription(data.name);
+
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
 
     /* As this verifies mainly the algorithm, there's no variant with UBOs --
        those are sufficiently tested elsewhere */
@@ -1335,6 +1476,11 @@ template<LineGL3D::Flag flag> void LineGLTest::renderCube3D() {
             CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
         #endif
     }
+
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
 
     /* A cube, with the top and bottom quad being a loop and the sides being
        disconnected segments */
@@ -1501,6 +1647,11 @@ template<LineGL3D::Flag flag> void LineGLTest::renderCube3D() {
 }
 
 void LineGLTest::renderPerspective3D() {
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
     /* Verify that perspective-correct interpolation isn't used (which would
        cause significant artifacts) */
     GL::Mesh lines = generateLineMesh({
@@ -1540,6 +1691,11 @@ template<class T, LineGL2D::Flag flag> void LineGLTest::renderVertexColor2D() {
     } else {
         setTestCaseTemplateName(T::Size == 3 ? "Color3" : "Color4");
     }
+
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
 
     GL::Mesh lines = generateLineMesh({
         {-0.8f, 0.5f}, {-0.5f, -0.5f},
@@ -1624,6 +1780,11 @@ template<class T, LineGL3D::Flag flag> void LineGLTest::renderVertexColor3D() {
         setTestCaseTemplateName(T::Size == 3 ? "Color3" : "Color4");
     }
 
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
     /* Same as renderVertexColor2D(), except that the positions are 3D with
        varying Z. But the (default) projection is orthographic so the output is
        the same -- nothing 3D-specific to test here. */
@@ -1698,9 +1859,819 @@ template<class T, LineGL3D::Flag flag> void LineGLTest::renderVertexColor3D() {
         (DebugTools::CompareImageToFile{_manager}));
 }
 
-template<class T, LineGL3D::Flag flag> void LineGLTest::renderObjectId2D() {
-    // TODO verify that it gets correctly written also in the smooth edges and
-    //  in circular/triangle (thus, instanced?!)
+template<LineGL2D::Flag flag> void LineGLTest::renderObjectId2D() {
+    auto&& data = RenderObjectIdData[testCaseInstanceId()];
+    setTestCaseDescription(data.name);
+
+    if(flag == LineGL3D::Flag::UniformBuffers) {
+        setTestCaseTemplateName("Flag::UniformBuffers");
+
+        #ifndef MAGNUM_TARGET_GLES
+        if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
+            CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
+        #endif
+    }
+
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
+    GL::Mesh lines = generateLineMesh({
+        {-0.6f, 0.0f}, {0.6f, 0.0f}
+    });
+
+    LineGL2D shader{LineGL2D::Configuration{}
+        .setFlags(LineGL2D::Flag::ObjectId|flag)
+        .setCapStyle(data.capStyle)};
+    shader.setViewportSize(Vector2{RenderSizeSmall});
+
+    if(flag == LineGL2D::Flag{}) {
+        shader
+            .setWidth(data.width)
+            .setSmoothness(data.smoothness)
+            .setObjectId(47365)
+            .draw(lines);
+    } else if(flag == LineGL2D::Flag::UniformBuffers) {
+        GL::Buffer transformationProjectionUniform{GL::Buffer::TargetHint::Uniform, {
+            TransformationProjectionUniform2D{}
+        }};
+        GL::Buffer drawUniform{GL::Buffer::TargetHint::Uniform, {
+            LineDrawUniform{}
+                .setObjectId(47365)
+        }};
+        GL::Buffer materialUniform{GL::Buffer::TargetHint::Uniform, {
+            LineMaterialUniform{}
+                .setWidth(data.width)
+                .setSmoothness(data.smoothness)
+        }};
+        shader
+            .bindTransformationProjectionBuffer(transformationProjectionUniform)
+            .bindDrawBuffer(drawUniform)
+            .bindMaterialBuffer(materialUniform)
+            .draw(lines);
+    } else CORRADE_INTERNAL_ASSERT_UNREACHABLE();
+
+    MAGNUM_VERIFY_NO_GL_ERROR();
+
+    /* No need to verify the whole image, just check that pixels at known
+       places have expected values. SwiftShader insists that the read format
+       has to be 32bit, so the renderbuffer format is that too to make it the
+       same (ES3 Mesa complains if these don't match). */
+    _framebuffer.mapForRead(GL::Framebuffer::ColorAttachment{1});
+    CORRADE_COMPARE(_framebuffer.checkStatus(GL::FramebufferTarget::Read), GL::Framebuffer::Status::Complete);
+    Image2D image = _framebuffer.read(_framebuffer.viewport(), {PixelFormat::R32UI});
+    _framebuffer.mapForRead(GL::Framebuffer::ColorAttachment{0});
+
+    MAGNUM_VERIFY_NO_GL_ERROR();
+
+    /* Center of the line, should be set */
+    CORRADE_COMPARE(image.pixels<UnsignedInt>()[39][39], 47365);
+    /* Corner of the line, should be set as well, independently of the cap
+       style or smoothness */
+    CORRADE_COMPARE(image.pixels<UnsignedInt>()[35][11], 47365);
+    /* Outside of the object */
+    CORRADE_COMPARE(image.pixels<UnsignedInt>()[34][11], 27);
+    CORRADE_COMPARE(image.pixels<UnsignedInt>()[35][10], 27);
+}
+
+template<LineGL3D::Flag flag> void LineGLTest::renderObjectId3D() {
+    auto&& data = RenderObjectIdData[testCaseInstanceId()];
+    setTestCaseDescription(data.name);
+
+    if(flag == LineGL3D::Flag::UniformBuffers) {
+        setTestCaseTemplateName("Flag::UniformBuffers");
+
+        #ifndef MAGNUM_TARGET_GLES
+        if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
+            CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
+        #endif
+    }
+
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
+    /* Same as renderObjectId2D(), just with a varying Z coordinate (which
+       should have no effect as the projection is orthographic) */
+    GL::Mesh lines = generateLineMesh({
+        {-0.6f, 0.0f, 1.0f}, {0.6f, 0.0f, -1.0f}
+    });
+
+    LineGL3D shader{LineGL3D::Configuration{}
+        .setFlags(LineGL3D::Flag::ObjectId|flag)
+        .setCapStyle(data.capStyle)};
+    shader.setViewportSize(Vector2{RenderSizeSmall});
+
+    if(flag == LineGL3D::Flag{}) {
+        shader
+            .setWidth(data.width)
+            .setSmoothness(data.smoothness)
+            .setObjectId(47365)
+            .draw(lines);
+    } else if(flag == LineGL3D::Flag::UniformBuffers) {
+        GL::Buffer transformationProjectionUniform{GL::Buffer::TargetHint::Uniform, {
+            TransformationProjectionUniform3D{}
+        }};
+        GL::Buffer drawUniform{GL::Buffer::TargetHint::Uniform, {
+            LineDrawUniform{}
+                .setObjectId(47365)
+        }};
+        GL::Buffer materialUniform{GL::Buffer::TargetHint::Uniform, {
+            LineMaterialUniform{}
+                .setWidth(data.width)
+                .setSmoothness(data.smoothness)
+        }};
+        shader
+            .bindTransformationProjectionBuffer(transformationProjectionUniform)
+            .bindDrawBuffer(drawUniform)
+            .bindMaterialBuffer(materialUniform)
+            .draw(lines);
+    } else CORRADE_INTERNAL_ASSERT_UNREACHABLE();
+
+    MAGNUM_VERIFY_NO_GL_ERROR();
+
+    /* No need to verify the whole image, just check that pixels at known
+       places have expected values. SwiftShader insists that the read format
+       has to be 32bit, so the renderbuffer format is that too to make it the
+       same (ES3 Mesa complains if these don't match). */
+    _framebuffer.mapForRead(GL::Framebuffer::ColorAttachment{1});
+    CORRADE_COMPARE(_framebuffer.checkStatus(GL::FramebufferTarget::Read), GL::Framebuffer::Status::Complete);
+    Image2D image = _framebuffer.read(_framebuffer.viewport(), {PixelFormat::R32UI});
+    _framebuffer.mapForRead(GL::Framebuffer::ColorAttachment{0});
+
+    MAGNUM_VERIFY_NO_GL_ERROR();
+
+    /* Center of the line, should be set */
+    CORRADE_COMPARE(image.pixels<UnsignedInt>()[39][39], 47365);
+    /* Corner of the line, should be set as well, independently of the cap
+       style or smoothness */
+    CORRADE_COMPARE(image.pixels<UnsignedInt>()[35][11], 47365);
+    /* Outside of the object */
+    CORRADE_COMPARE(image.pixels<UnsignedInt>()[34][11], 27);
+    CORRADE_COMPARE(image.pixels<UnsignedInt>()[35][10], 27);
+}
+
+template<LineGL2D::Flag flag> void LineGLTest::renderInstanced2D() {
+    auto&& data = RenderInstancedData[testCaseInstanceId()];
+    setTestCaseDescription(data.name);
+
+    if(flag == LineGL3D::Flag::UniformBuffers) {
+        setTestCaseTemplateName("Flag::UniformBuffers");
+
+        #ifndef MAGNUM_TARGET_GLES
+        if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
+            CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
+        #endif
+    }
+
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
+    /* A wave, important property is that it passes through origin to make
+       object ID verification easier */
+    GL::Mesh lines = generateLineMesh({
+        {-0.8f, -0.8f}, {-0.5f, 0.5f},
+        {-0.5f, 0.5f}, {0.5f, -0.5f},
+        {0.5f, -0.5f}, {0.8f, 0.8f}
+    });
+
+    /* Three circles, each in a different location */
+    struct {
+        Matrix3 transformation;
+        Color3 color;
+        UnsignedInt objectId;
+    } instanceData[] {
+        {Matrix3::translation({-1.25f, -1.25f}), 0xffff00_rgbf, 211},
+        {Matrix3::translation({ 1.25f, -1.25f}), 0x00ffff_rgbf, 4627},
+        {Matrix3::translation({ 0.00f,  1.25f}), 0xff00ff_rgbf, 35363},
+    };
+
+    lines
+        .addVertexBufferInstanced(GL::Buffer{instanceData}, 1, 0,
+            LineGL2D::TransformationMatrix{},
+            LineGL2D::Color3{},
+            LineGL2D::ObjectId{})
+        .setInstanceCount(3);
+
+    LineGL2D shader{LineGL2D::Configuration{}
+        .setFlags(LineGL2D::Flag::InstancedTransformation|LineGL2D::Flag::VertexColor|data.flags|flag)};
+    shader.setViewportSize(Vector2{RenderSizeSmall});
+
+    if(flag == LineGL2D::Flag{}) {
+        shader
+            .setTransformationProjectionMatrix(
+                Matrix3::projection({2.1f, 2.1f})*
+                Matrix3::scaling(Vector2{0.4f}))
+            .setColor(0xffff00_rgbf)
+            .setWidth(5.0f)
+            .setSmoothness(1.0f);
+        if(data.flags & LineGL2D::Flag::ObjectId)
+            /* Gets added to the per-instance ID, if that's enabled as well */
+            shader.setObjectId(1000);
+        shader.draw(lines);
+
+    } else if(flag == LineGL2D::Flag::UniformBuffers) {
+        GL::Buffer transformationProjectionUniform{GL::Buffer::TargetHint::Uniform, {
+            TransformationProjectionUniform2D{}
+                .setTransformationProjectionMatrix(
+                    Matrix3::projection({2.1f, 2.1f})*
+                    Matrix3::scaling(Vector2{0.4f})
+                )
+        }};
+        GL::Buffer drawUniform{GL::Buffer::TargetHint::Uniform, {
+            LineDrawUniform{}
+                /* Gets added to the per-instance ID, if that's enabled as
+                   well */
+                .setObjectId(1000)
+        }};
+        GL::Buffer materialUniform{GL::Buffer::TargetHint::Uniform, {
+            LineMaterialUniform{}
+            .setColor(0xffff00_rgbf)
+            .setWidth(5.0f)
+            .setSmoothness(1.0f)
+        }};
+        shader
+            .bindTransformationProjectionBuffer(transformationProjectionUniform)
+            .bindDrawBuffer(drawUniform)
+            .bindMaterialBuffer(materialUniform)
+            .draw(lines);
+    } else CORRADE_INTERNAL_ASSERT_UNREACHABLE();
+
+    MAGNUM_VERIFY_NO_GL_ERROR();
+
+    if(!(_manager.loadState("AnyImageImporter") & PluginManager::LoadState::Loaded) ||
+       !(_manager.loadState("TgaImporter") & PluginManager::LoadState::Loaded))
+        CORRADE_SKIP("AnyImageImporter / TgaImporter plugins not found.");
+
+    /* - First should be lower left, yellow with a yellow base color, so yellow
+       - Second lower right, cyan with a yellow base color, so green
+       - Third up center, magenta with a yellow base color, so red */
+    CORRADE_COMPARE_WITH(
+        /* Dropping the alpha channel, as it's always 1.0 */
+        Containers::arrayCast<Color3ub>(_framebuffer.read(_framebuffer.viewport(), {PixelFormat::RGBA8Unorm}).pixels<Color4ub>()),
+        Utility::Path::join(SHADERS_TEST_DIR, "LineTestFiles/instanced.tga"),
+        (DebugTools::CompareImageToFile{_manager}));
+
+    #ifndef MAGNUM_TARGET_GLES2
+    /* Object ID -- no need to verify the whole image, just check that pixels
+       on known places have expected values. SwiftShader insists that the read
+       format has to be 32bit, so the renderbuffer format is that too to make
+       it the same (ES3 Mesa complains if these don't match). */
+    if(data.flags & LineGL2D::Flag::ObjectId) {
+        _framebuffer.mapForRead(GL::Framebuffer::ColorAttachment{1});
+        CORRADE_COMPARE(_framebuffer.checkStatus(GL::FramebufferTarget::Read), GL::Framebuffer::Status::Complete);
+        Image2D image = _framebuffer.read(_framebuffer.viewport(), {PixelFormat::R32UI});
+        _framebuffer.mapForRead(GL::Framebuffer::ColorAttachment{0});
+
+        MAGNUM_VERIFY_NO_GL_ERROR();
+
+        /* If instanced object IDs are enabled, the per-instance ID gets added
+           to the output as well */
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[5][5], 27); /* Outside */
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[20][20], data.expectedId[0]);
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[20][60], data.expectedId[1]);
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[60][40], data.expectedId[2]);
+    }
+    #endif
+}
+
+template<LineGL3D::Flag flag> void LineGLTest::renderInstanced3D() {
+    auto&& data = RenderInstancedData[testCaseInstanceId()];
+    setTestCaseDescription(data.name);
+
+    if(flag == LineGL3D::Flag::UniformBuffers) {
+        setTestCaseTemplateName("Flag::UniformBuffers");
+
+        #ifndef MAGNUM_TARGET_GLES
+        if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
+            CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
+        #endif
+    }
+
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    #endif
+
+    /* Same as in renderInstanced2D() except for a varying Z coordinate. Which
+       shouldn't affect the output as the projection is orthographic. */
+    GL::Mesh lines = generateLineMesh({
+        {-0.8f, -0.8f, 1.0f}, {-0.5f, 0.5f, -1.0f},
+        {-0.5f, 0.5f, -1.0f}, {0.5f, -0.5f, 0.0f},
+        {0.5f, -0.5f, 0.0f}, {0.8f, 0.8f, 1.0f}
+    });
+
+    /* Three circles, each in a different location */
+    struct {
+        Matrix4 transformation;
+        Color3 color;
+        UnsignedInt objectId;
+    } instanceData[] {
+        {Matrix4::translation({-1.25f, -1.25f, 0.5f}), 0xffff00_rgbf, 211},
+        {Matrix4::translation({ 1.25f, -1.25f, -0.5f}), 0x00ffff_rgbf, 4627},
+        {Matrix4::translation({ 0.00f,  1.25f, 0.0f}), 0xff00ff_rgbf, 35363},
+    };
+
+    lines
+        .addVertexBufferInstanced(GL::Buffer{instanceData}, 1, 0,
+            LineGL3D::TransformationMatrix{},
+            LineGL3D::Color3{},
+            LineGL3D::ObjectId{})
+        .setInstanceCount(3);
+
+    LineGL3D shader{LineGL3D::Configuration{}
+        .setFlags(LineGL3D::Flag::InstancedTransformation|LineGL3D::Flag::VertexColor|data.flags|flag)};
+    shader.setViewportSize(Vector2{RenderSizeSmall});
+
+    if(flag == LineGL3D::Flag{}) {
+        shader
+            .setTransformationProjectionMatrix(
+                Matrix4::orthographicProjection({2.1f, 2.1f}, -1.0f, 1.0f)*
+                Matrix4::scaling(Vector3{0.4f}))
+            .setColor(0xffff00_rgbf)
+            .setWidth(5.0f)
+            .setSmoothness(1.0f);
+        if(data.flags & LineGL2D::Flag::ObjectId)
+            /* Gets added to the per-instance ID, if that's enabled as well */
+            shader.setObjectId(1000);
+        shader.draw(lines);
+
+    } else if(flag == LineGL2D::Flag::UniformBuffers) {
+        GL::Buffer transformationProjectionUniform{GL::Buffer::TargetHint::Uniform, {
+            TransformationProjectionUniform3D{}
+                .setTransformationProjectionMatrix(
+                    Matrix4::orthographicProjection({2.1f, 2.1f}, -1.0f, 1.0f)*
+                    Matrix4::scaling(Vector3{0.4f})
+                )
+        }};
+        GL::Buffer drawUniform{GL::Buffer::TargetHint::Uniform, {
+            LineDrawUniform{}
+                /* Gets added to the per-instance ID, if that's enabled as
+                   well */
+                .setObjectId(1000)
+        }};
+        GL::Buffer materialUniform{GL::Buffer::TargetHint::Uniform, {
+            LineMaterialUniform{}
+            .setColor(0xffff00_rgbf)
+            .setWidth(5.0f)
+            .setSmoothness(1.0f)
+        }};
+        shader
+            .bindTransformationProjectionBuffer(transformationProjectionUniform)
+            .bindDrawBuffer(drawUniform)
+            .bindMaterialBuffer(materialUniform)
+            .draw(lines);
+    } else CORRADE_INTERNAL_ASSERT_UNREACHABLE();
+
+    MAGNUM_VERIFY_NO_GL_ERROR();
+
+    if(!(_manager.loadState("AnyImageImporter") & PluginManager::LoadState::Loaded) ||
+       !(_manager.loadState("TgaImporter") & PluginManager::LoadState::Loaded))
+        CORRADE_SKIP("AnyImageImporter / TgaImporter plugins not found.");
+
+    /* - First should be lower left, yellow with a yellow base color, so yellow
+       - Second lower right, cyan with a yellow base color, so green
+       - Third up center, magenta with a yellow base color, so red */
+    CORRADE_COMPARE_WITH(
+        /* Dropping the alpha channel, as it's always 1.0 */
+        Containers::arrayCast<Color3ub>(_framebuffer.read(_framebuffer.viewport(), {PixelFormat::RGBA8Unorm}).pixels<Color4ub>()),
+        Utility::Path::join(SHADERS_TEST_DIR, "LineTestFiles/instanced.tga"),
+        (DebugTools::CompareImageToFile{_manager}));
+
+    #ifndef MAGNUM_TARGET_GLES2
+    /* Object ID -- no need to verify the whole image, just check that pixels
+       on known places have expected values. SwiftShader insists that the read
+       format has to be 32bit, so the renderbuffer format is that too to make
+       it the same (ES3 Mesa complains if these don't match). */
+    if(data.flags & LineGL2D::Flag::ObjectId) {
+        _framebuffer.mapForRead(GL::Framebuffer::ColorAttachment{1});
+        CORRADE_COMPARE(_framebuffer.checkStatus(GL::FramebufferTarget::Read), GL::Framebuffer::Status::Complete);
+        Image2D image = _framebuffer.read(_framebuffer.viewport(), {PixelFormat::R32UI});
+        _framebuffer.mapForRead(GL::Framebuffer::ColorAttachment{0});
+
+        MAGNUM_VERIFY_NO_GL_ERROR();
+
+        /* If instanced object IDs are enabled, the per-instance ID gets added
+           to the output as well */
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[5][5], 27); /* Outside */
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[20][20], data.expectedId[0]);
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[20][60], data.expectedId[1]);
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[60][40], data.expectedId[2]);
+    }
+    #endif
+}
+
+void LineGLTest::renderMulti2D() {
+    auto&& data = RenderMultiData[testCaseInstanceId()];
+    setTestCaseDescription(data.name);
+
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
+        CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
+    #endif
+
+    if(data.flags >= LineGL2D::Flag::MultiDraw) {
+        #ifndef MAGNUM_TARGET_GLES
+        if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::shader_draw_parameters>())
+            CORRADE_SKIP(GL::Extensions::ARB::shader_draw_parameters::string() << "is not supported.");
+        #elif !defined(MAGNUM_TARGET_WEBGL)
+        if(!GL::Context::current().isExtensionSupported<GL::Extensions::ANGLE::multi_draw>())
+            CORRADE_SKIP(GL::Extensions::ANGLE::multi_draw::string() << "is not supported.");
+        #else
+        if(!GL::Context::current().isExtensionSupported<GL::Extensions::WEBGL::multi_draw>())
+            CORRADE_SKIP(GL::Extensions::WEBGL::multi_draw::string() << "is not supported.");
+        #endif
+    }
+
+    #if defined(MAGNUM_TARGET_GLES) && !defined(MAGNUM_TARGET_WEBGL)
+    if(GL::Context::current().detectedDriver() & GL::Context::DetectedDriver::SwiftShader)
+        CORRADE_SKIP("UBOs with dynamically indexed arrays are a crashy dumpster fire on SwiftShader, can't test.");
+    #endif
+
+    /* All parts pass through origin to make object ID verification easier */
+    GL::Mesh lines = generateLineMesh({
+        /* A wave, same as in renderInstanced2D() */
+        {-0.8f, -0.8f}, {-0.5f, 0.5f},  // 0 to 5 + 6 to 12 for the join
+        {-0.5f, 0.5f}, {0.5f, -0.5f},   // 12 to 17 + 18 to 23 for the join
+        {0.5f, -0.5f}, {0.8f, 0.8f},    // 24 to 29
+
+        /* A cross */
+        {-0.8f, -0.8f}, {0.8f, 0.8f},   // 30 to 35
+        {0.8f, -0.8f}, {-0.8f, 0.8f},   // 36 to 41
+
+        /* A single point */
+        {0.0f, 0.0f}, {0.0f, 0.0f}      // 42 to 47
+    });
+    CORRADE_COMPARE(lines.count(), 48);
+
+    GL::MeshView wave{lines};
+    wave.setCount(30);
+    GL::MeshView cross{lines};
+    cross.setCount(12)
+        .setIndexRange(30);
+    GL::MeshView point{lines};
+    point.setCount(6)
+        .setIndexRange(42);
+
+    LineGL2D shader{LineGL2D::Configuration{}
+        .setFlags(LineGL2D::Flag::UniformBuffers|data.flags)
+        .setMaterialCount(data.materialCount)
+        .setDrawCount(data.drawCount)};
+    shader.setViewportSize(Vector2{RenderSizeSmall});
+
+    /* Some drivers have uniform offset alignment as high as 256, which means
+       the subsequent sets of uniforms have to be aligned to a multiply of it.
+       The data.uniformIncrement is set high enough to ensure that, in the
+       non-offset-bind case this value is 1. */
+
+    Containers::Array<LineMaterialUniform> materialData{data.uniformIncrement + 1};
+    materialData[0*data.uniformIncrement] = LineMaterialUniform{}
+        .setColor(0x0000ff_rgbf)
+        .setWidth(3.0f)
+        .setSmoothness(3.0f);
+    materialData[1*data.uniformIncrement] = LineMaterialUniform{}
+        .setColor(0xff0000_rgbf)
+        .setWidth(5.0f)
+        .setSmoothness(1.0f);
+    GL::Buffer materialUniform{GL::Buffer::TargetHint::Uniform, materialData};
+
+    Containers::Array<TransformationProjectionUniform2D> transformationProjectionData{2*data.uniformIncrement + 1};
+    transformationProjectionData[0*data.uniformIncrement] = TransformationProjectionUniform2D{}
+        .setTransformationProjectionMatrix(
+            Matrix3::projection({2.1f, 2.1f})*
+            Matrix3::scaling(Vector2{0.4f})*
+            Matrix3::translation({-1.25f, -1.25f})
+        );
+    transformationProjectionData[1*data.uniformIncrement] = TransformationProjectionUniform2D{}
+        .setTransformationProjectionMatrix(
+            Matrix3::projection({2.1f, 2.1f})*
+            Matrix3::scaling(Vector2{0.4f})*
+            Matrix3::translation({ 1.25f, -1.25f})
+        );
+    transformationProjectionData[2*data.uniformIncrement] = TransformationProjectionUniform2D{}
+        .setTransformationProjectionMatrix(
+            Matrix3::projection({2.1f, 2.1f})*
+            Matrix3::scaling(Vector2{0.4f})*
+            Matrix3::translation({ 0.00f,  1.25f})
+        );
+    GL::Buffer transformationProjectionUniform{GL::Buffer::TargetHint::Uniform, transformationProjectionData};
+
+    Containers::Array<LineDrawUniform> drawData{2*data.uniformIncrement + 1};
+    /* Material offsets are zero if we have single draw, as those are
+       done with UBO offset bindings instead. */
+    drawData[0*data.uniformIncrement] = LineDrawUniform{}
+        .setMaterialId(data.drawCount == 1 ? 0 : 1)
+        .setObjectId(1211);
+    drawData[1*data.uniformIncrement] = LineDrawUniform{}
+        .setMaterialId(data.drawCount == 1 ? 0 : 0)
+        .setObjectId(5627);
+    drawData[2*data.uniformIncrement] = LineDrawUniform{}
+        .setMaterialId(data.drawCount == 1 ? 0 : 1)
+        .setObjectId(36363);
+    GL::Buffer drawUniform{GL::Buffer::TargetHint::Uniform, drawData};
+
+    /* Enabling blending so the overlap in X is rendered alright */
+    GL::Renderer::enable(GL::Renderer::Feature::Blending);
+    GL::Renderer::setBlendFunction(
+        GL::Renderer::BlendFunction::One,
+        GL::Renderer::BlendFunction::OneMinusSourceAlpha);
+
+    /* Just one draw, rebinding UBOs each time */
+    if(data.drawCount == 1) {
+        shader.bindMaterialBuffer(materialUniform,
+            1*data.uniformIncrement*sizeof(LineMaterialUniform),
+            sizeof(LineMaterialUniform));
+        shader.bindTransformationProjectionBuffer(transformationProjectionUniform,
+            0*data.uniformIncrement*sizeof(TransformationProjectionUniform2D),
+            sizeof(TransformationProjectionUniform2D));
+        shader.bindDrawBuffer(drawUniform,
+            0*data.uniformIncrement*sizeof(LineDrawUniform),
+            sizeof(LineDrawUniform));
+        shader.draw(wave);
+
+        shader.bindMaterialBuffer(materialUniform,
+            0*data.uniformIncrement*sizeof(LineMaterialUniform),
+            sizeof(LineMaterialUniform));
+        shader.bindTransformationProjectionBuffer(transformationProjectionUniform,
+            1*data.uniformIncrement*sizeof(TransformationProjectionUniform2D),
+            sizeof(TransformationProjectionUniform2D));
+        shader.bindDrawBuffer(drawUniform,
+            1*data.uniformIncrement*sizeof(LineDrawUniform),
+            sizeof(LineDrawUniform));
+        shader.draw(cross);
+
+        shader.bindMaterialBuffer(materialUniform,
+            1*data.uniformIncrement*sizeof(LineMaterialUniform),
+            sizeof(LineMaterialUniform));
+        shader.bindTransformationProjectionBuffer(transformationProjectionUniform,
+            2*data.uniformIncrement*sizeof(TransformationProjectionUniform2D),
+            sizeof(TransformationProjectionUniform2D));
+        shader.bindDrawBuffer(drawUniform,
+            2*data.uniformIncrement*sizeof(LineDrawUniform),
+            sizeof(LineDrawUniform));
+        shader.draw(point);
+
+    /* Otherwise using the draw offset / multidraw */
+    } else {
+        shader.bindTransformationProjectionBuffer(transformationProjectionUniform)
+            .bindDrawBuffer(drawUniform)
+            .bindMaterialBuffer(materialUniform);
+
+        if(data.flags >= LineGL2D::Flag::MultiDraw)
+            shader.draw({wave, cross, point});
+        else shader
+            .setDrawOffset(0)
+            .draw(wave)
+            .setDrawOffset(1)
+            .draw(cross)
+            .setDrawOffset(2)
+            .draw(point);
+    }
+
+    GL::Renderer::disable(GL::Renderer::Feature::Blending);
+
+    MAGNUM_VERIFY_NO_GL_ERROR();
+
+    if(!(_manager.loadState("AnyImageImporter") & PluginManager::LoadState::Loaded) ||
+       !(_manager.loadState("TgaImporter") & PluginManager::LoadState::Loaded))
+        CORRADE_SKIP("AnyImageImporter / TgaImporter plugins not found.");
+
+    /* - Wave should be lower left, red
+       - Cross lower right, blue
+       - Point up center, red */
+    CORRADE_COMPARE_WITH(
+        /* Dropping the alpha channel, as it's always 1.0 */
+        Containers::arrayCast<Color3ub>(_framebuffer.read(_framebuffer.viewport(), {PixelFormat::RGBA8Unorm}).pixels<Color4ub>()),
+        Utility::Path::join(SHADERS_TEST_DIR, "LineTestFiles/multidraw.tga"),
+        (DebugTools::CompareImageToFile{_manager}));
+
+    /* Object ID -- no need to verify the whole image, just check that pixels
+       on known places have expected values. SwiftShader insists that the read
+       format has to be 32bit, so the renderbuffer format is that too to make
+       it the same (ES3 Mesa complains if these don't match). */
+    if(data.flags & LineGL2D::Flag::ObjectId) {
+        _framebuffer.mapForRead(GL::Framebuffer::ColorAttachment{1});
+        CORRADE_COMPARE(_framebuffer.checkStatus(GL::FramebufferTarget::Read), GL::Framebuffer::Status::Complete);
+        Image2D image = _framebuffer.read(_framebuffer.viewport(), {PixelFormat::R32UI});
+        _framebuffer.mapForRead(GL::Framebuffer::ColorAttachment{0});
+
+        MAGNUM_VERIFY_NO_GL_ERROR();
+
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[5][5], 27); /* Outside */
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[20][20], data.expectedId[0]); /* Wave */
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[20][60], data.expectedId[1]); /* Cross */
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[60][40], data.expectedId[2]); /* Point */
+    }
+}
+
+void LineGLTest::renderMulti3D() {
+    auto&& data = RenderMultiData[testCaseInstanceId()];
+    setTestCaseDescription(data.name);
+
+    #ifndef MAGNUM_TARGET_GLES
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::EXT::gpu_shader4>())
+        CORRADE_SKIP(GL::Extensions::EXT::gpu_shader4::string() << "is not supported.");
+    if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::uniform_buffer_object>())
+        CORRADE_SKIP(GL::Extensions::ARB::uniform_buffer_object::string() << "is not supported.");
+    #endif
+
+    if(data.flags >= LineGL2D::Flag::MultiDraw) {
+        #ifndef MAGNUM_TARGET_GLES
+        if(!GL::Context::current().isExtensionSupported<GL::Extensions::ARB::shader_draw_parameters>())
+            CORRADE_SKIP(GL::Extensions::ARB::shader_draw_parameters::string() << "is not supported.");
+        #elif !defined(MAGNUM_TARGET_WEBGL)
+        if(!GL::Context::current().isExtensionSupported<GL::Extensions::ANGLE::multi_draw>())
+            CORRADE_SKIP(GL::Extensions::ANGLE::multi_draw::string() << "is not supported.");
+        #else
+        if(!GL::Context::current().isExtensionSupported<GL::Extensions::WEBGL::multi_draw>())
+            CORRADE_SKIP(GL::Extensions::WEBGL::multi_draw::string() << "is not supported.");
+        #endif
+    }
+
+    #if defined(MAGNUM_TARGET_GLES) && !defined(MAGNUM_TARGET_WEBGL)
+    if(GL::Context::current().detectedDriver() & GL::Context::DetectedDriver::SwiftShader)
+        CORRADE_SKIP("UBOs with dynamically indexed arrays are a crashy dumpster fire on SwiftShader, can't test.");
+    #endif
+
+    /* Same as in renderMulti2D() except for an additional varying Z
+       coordinate. Which won't affect the output because the projection is
+       orthographic. */
+    GL::Mesh lines = generateLineMesh({
+        {-0.8f, -0.8f, 1.0f}, {-0.5f, 0.5f, -1.0f},
+        {-0.5f, 0.5f, -1.0f}, {0.5f, -0.5f, 0.0f},
+        {0.5f, -0.5f, 0.0f}, {0.8f, 0.8f, 1.0f},
+
+        {-0.8f, -0.8f, 1.0f}, {0.8f, 0.8f, 1.0f},
+        {0.8f, -0.8f, -1.0f}, {-0.8f, 0.8f, -1.0f},
+
+        {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}
+    });
+    CORRADE_COMPARE(lines.count(), 48);
+
+    GL::MeshView wave{lines};
+    wave.setCount(30);
+    GL::MeshView cross{lines};
+    cross.setCount(12)
+        .setIndexRange(30);
+    GL::MeshView point{lines};
+    point.setCount(6)
+        .setIndexRange(42);
+
+    LineGL3D shader{LineGL3D::Configuration{}
+        .setFlags(LineGL3D::Flag::UniformBuffers|data.flags)
+        .setMaterialCount(data.materialCount)
+        .setDrawCount(data.drawCount)};
+    shader.setViewportSize(Vector2{RenderSizeSmall});
+
+    /* Some drivers have uniform offset alignment as high as 256, which means
+       the subsequent sets of uniforms have to be aligned to a multiply of it.
+       The data.uniformIncrement is set high enough to ensure that, in the
+       non-offset-bind case this value is 1. */
+
+    Containers::Array<LineMaterialUniform> materialData{data.uniformIncrement + 1};
+    materialData[0*data.uniformIncrement] = LineMaterialUniform{}
+        .setColor(0x0000ff_rgbf)
+        .setWidth(3.0f)
+        .setSmoothness(3.0f);
+    materialData[1*data.uniformIncrement] = LineMaterialUniform{}
+        .setColor(0xff0000_rgbf)
+        .setWidth(5.0f)
+        .setSmoothness(1.0f);
+    GL::Buffer materialUniform{GL::Buffer::TargetHint::Uniform, materialData};
+
+    Containers::Array<TransformationProjectionUniform3D> transformationProjectionData{2*data.uniformIncrement + 1};
+    transformationProjectionData[0*data.uniformIncrement] = TransformationProjectionUniform3D{}
+        .setTransformationProjectionMatrix(
+            Matrix4::orthographicProjection({2.1f, 2.1f}, -1.0f, 1.0f)*
+            Matrix4::scaling(Vector3{0.4f})*
+            Matrix4::translation({-1.25f, -1.25f, 0.5f})
+        );
+    transformationProjectionData[1*data.uniformIncrement] = TransformationProjectionUniform3D{}
+        .setTransformationProjectionMatrix(
+            Matrix4::orthographicProjection({2.1f, 2.1f}, -1.0f, 1.0f)*
+            Matrix4::scaling(Vector3{0.4f})*
+            Matrix4::translation({ 1.25f, -1.25f, -0.5f})
+        );
+    transformationProjectionData[2*data.uniformIncrement] = TransformationProjectionUniform3D{}
+        .setTransformationProjectionMatrix(
+            Matrix4::orthographicProjection({2.1f, 2.1f}, -1.0f, 1.0f)*
+            Matrix4::scaling(Vector3{0.4f})*
+            Matrix4::translation({ 0.00f,  1.25f, 0.0f})
+        );
+    GL::Buffer transformationProjectionUniform{GL::Buffer::TargetHint::Uniform, transformationProjectionData};
+
+    Containers::Array<LineDrawUniform> drawData{2*data.uniformIncrement + 1};
+    /* Material offsets are zero if we have single draw, as those are
+       done with UBO offset bindings instead. */
+    drawData[0*data.uniformIncrement] = LineDrawUniform{}
+        .setMaterialId(data.drawCount == 1 ? 0 : 1)
+        .setObjectId(1211);
+    drawData[1*data.uniformIncrement] = LineDrawUniform{}
+        .setMaterialId(data.drawCount == 1 ? 0 : 0)
+        .setObjectId(5627);
+    drawData[2*data.uniformIncrement] = LineDrawUniform{}
+        .setMaterialId(data.drawCount == 1 ? 0 : 1)
+        .setObjectId(36363);
+    GL::Buffer drawUniform{GL::Buffer::TargetHint::Uniform, drawData};
+
+    /* Enabling blending so the overlap in X is rendered alright */
+    GL::Renderer::enable(GL::Renderer::Feature::Blending);
+    GL::Renderer::setBlendFunction(
+        GL::Renderer::BlendFunction::One,
+        GL::Renderer::BlendFunction::OneMinusSourceAlpha);
+
+    /* Just one draw, rebinding UBOs each time */
+    if(data.drawCount == 1) {
+        shader.bindMaterialBuffer(materialUniform,
+            1*data.uniformIncrement*sizeof(LineMaterialUniform),
+            sizeof(LineMaterialUniform));
+        shader.bindTransformationProjectionBuffer(transformationProjectionUniform,
+            0*data.uniformIncrement*sizeof(TransformationProjectionUniform3D),
+            sizeof(TransformationProjectionUniform3D));
+        shader.bindDrawBuffer(drawUniform,
+            0*data.uniformIncrement*sizeof(LineDrawUniform),
+            sizeof(LineDrawUniform));
+        shader.draw(wave);
+
+        shader.bindMaterialBuffer(materialUniform,
+            0*data.uniformIncrement*sizeof(LineMaterialUniform),
+            sizeof(LineMaterialUniform));
+        shader.bindTransformationProjectionBuffer(transformationProjectionUniform,
+            1*data.uniformIncrement*sizeof(TransformationProjectionUniform3D),
+            sizeof(TransformationProjectionUniform3D));
+        shader.bindDrawBuffer(drawUniform,
+            1*data.uniformIncrement*sizeof(LineDrawUniform),
+            sizeof(LineDrawUniform));
+        shader.draw(cross);
+
+        shader.bindMaterialBuffer(materialUniform,
+            1*data.uniformIncrement*sizeof(LineMaterialUniform),
+            sizeof(LineMaterialUniform));
+        shader.bindTransformationProjectionBuffer(transformationProjectionUniform,
+            2*data.uniformIncrement*sizeof(TransformationProjectionUniform3D),
+            sizeof(TransformationProjectionUniform3D));
+        shader.bindDrawBuffer(drawUniform,
+            2*data.uniformIncrement*sizeof(LineDrawUniform),
+            sizeof(LineDrawUniform));
+        shader.draw(point);
+
+    /* Otherwise using the draw offset / multidraw */
+    } else {
+        shader.bindTransformationProjectionBuffer(transformationProjectionUniform)
+            .bindDrawBuffer(drawUniform)
+            .bindMaterialBuffer(materialUniform);
+
+        if(data.flags >= LineGL3D::Flag::MultiDraw)
+            shader.draw({wave, cross, point});
+        else shader
+            .setDrawOffset(0)
+            .draw(wave)
+            .setDrawOffset(1)
+            .draw(cross)
+            .setDrawOffset(2)
+            .draw(point);
+    }
+
+    GL::Renderer::disable(GL::Renderer::Feature::Blending);
+
+    MAGNUM_VERIFY_NO_GL_ERROR();
+
+    if(!(_manager.loadState("AnyImageImporter") & PluginManager::LoadState::Loaded) ||
+       !(_manager.loadState("TgaImporter") & PluginManager::LoadState::Loaded))
+        CORRADE_SKIP("AnyImageImporter / TgaImporter plugins not found.");
+
+    /* - Wave should be lower left, red
+       - Cross lower right, blue
+       - Point up center, red */
+    CORRADE_COMPARE_WITH(
+        /* Dropping the alpha channel, as it's always 1.0 */
+        Containers::arrayCast<Color3ub>(_framebuffer.read(_framebuffer.viewport(), {PixelFormat::RGBA8Unorm}).pixels<Color4ub>()),
+        Utility::Path::join(SHADERS_TEST_DIR, "LineTestFiles/multidraw.tga"),
+        (DebugTools::CompareImageToFile{_manager}));
+
+    /* Object ID -- no need to verify the whole image, just check that pixels
+       on known places have expected values. SwiftShader insists that the read
+       format has to be 32bit, so the renderbuffer format is that too to make
+       it the same (ES3 Mesa complains if these don't match). */
+    if(data.flags & LineGL3D::Flag::ObjectId) {
+        _framebuffer.mapForRead(GL::Framebuffer::ColorAttachment{1});
+        CORRADE_COMPARE(_framebuffer.checkStatus(GL::FramebufferTarget::Read), GL::Framebuffer::Status::Complete);
+        Image2D image = _framebuffer.read(_framebuffer.viewport(), {PixelFormat::R32UI});
+        _framebuffer.mapForRead(GL::Framebuffer::ColorAttachment{0});
+
+        MAGNUM_VERIFY_NO_GL_ERROR();
+
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[5][5], 27); /* Outside */
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[20][20], data.expectedId[0]); /* Wave */
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[20][60], data.expectedId[1]); /* Cross */
+        CORRADE_COMPARE(image.pixels<UnsignedInt>()[60][40], data.expectedId[2]); /* Point */
+    }
 }
 
 }}}}

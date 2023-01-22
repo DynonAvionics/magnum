@@ -234,6 +234,10 @@ void main() {
         color, backgroundColor, factor);
 
     #ifdef OBJECT_ID
-    fragmentObjectId = objectId;
+    fragmentObjectId =
+        #ifdef INSTANCED_OBJECT_ID
+        interpolatedInstanceObjectId +
+        #endif
+        objectId;
     #endif
 }

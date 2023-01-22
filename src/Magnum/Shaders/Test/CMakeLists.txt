@@ -473,7 +473,27 @@ if(MAGNUM_BUILD_GL_TESTS)
                 MagnumMeshTools
                 MagnumPrimitives
                 MagnumShadersTestLib
-                MagnumOpenGLTester)
+                MagnumOpenGLTester
+            FILES
+                LineTestFiles/caps-butt-joins-bevel.tga
+                LineTestFiles/caps-butt-joins-miter-flat.tga
+                LineTestFiles/caps-round-joins-miter.tga
+                LineTestFiles/caps-square-joins-bevel.tga
+                LineTestFiles/caps-square-joins-miter-flat.tga
+                LineTestFiles/caps-square-joins-miter-limit-36.tga
+                LineTestFiles/caps-square-joins-miter-limit-70deg.tga
+                LineTestFiles/caps-square-joins-miter-limit-91deg.tga
+                LineTestFiles/caps-square-joins-miter.tga
+                LineTestFiles/caps-triangle-joins-bevel.tga
+                LineTestFiles/cube3D-caps-butt-joins-bevel.tga
+                LineTestFiles/cube3D-caps-square-joins-miter.tga
+                LineTestFiles/cube3D-depth.tga
+                LineTestFiles/cube3D-flat-single-pixel.tga
+                LineTestFiles/defaults.tga
+                LineTestFiles/instanced.tga
+                LineTestFiles/multidraw.tga
+                LineTestFiles/perspective3D.tga
+                LineTestFiles/vertex-color.tga)
         target_include_directories(ShadersLineGLTest PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>)
         if(MAGNUM_BUILD_PLUGINS_STATIC)
             if(MAGNUM_WITH_ANYIMAGEIMPORTER)
