@@ -198,27 +198,48 @@ void main() {
     mediump const float smoothness = materials[materialId].material_smoothness;
     #endif
 
-    // TODO better names ffs
-    highp vec2 distance_ = vec2(max(abs(centerDistanceSigned.x)
-        #ifdef CAP_STYLE_BUTT
-        + width*0.5  // TODO wut, clean up
-        #endif
-        - halfSegmentLength, 0.0), abs(centerDistanceSigned.y));
-    // TODO document what is this
-    if(hasCap < 0.0) distance_.x = 0.0;
+    /* Calculate a distance from the original line endpoint (B). Assuming a cap
+       that's not a butt, actual quad vertices (2, 3 on the left diagram) would
+       be at a distance `width/2` in both X and Y (in the space of the line
+       segment, where X is in direction of the segment and Y is in direction to
+       the line edges):
 
+          ----------2                       --------2
+                    |                               |
+        [0,0]   B   |                     [0,0]     B
+                    |                               |
+          ----------3                       --------3
+
+       For a butt cap, the endpoint B would be at the edge instead (right
+       diagram) -- to have handling consistent for all cap styles, add
+       `width/2` to the center distance in that case. For fragments on the left
+       of B the X distance would be negative, make it 0 in that case
+       instead. */
+    highp const vec2 centerDistance = abs(centerDistanceSigned);
+    highp vec2 endpointDistance = vec2(max(centerDistance.x
+        #ifdef CAP_STYLE_BUTT
+        + width*0.5
+        #endif
+        - halfSegmentLength, 0.0), centerDistance.y);
+
+    /* If hasCap is negative, it means the nearest endpoint is a join, not a
+       cap. Thus no smoothing happens in the direction of a cap, i.e. same as
+       if we'd be at the center of the line. */
+    if(hasCap < 0.0) endpointDistance.x = 0.0;
+
+    /* Calculate a single distance factor out of the two-dimensional endpoint
+       distance. This will form the cap shape. */
     #if defined(CAP_STYLE_BUTT) || defined(CAP_STYLE_SQUARE)
-    highp const float distanceS = max(distance_.x, distance_.y);
+    highp const float distance1D = max(endpointDistance.x, endpointDistance.y);
     #elif defined(CAP_STYLE_ROUND)
-    highp const float distanceS = length(distance_);
+    highp const float distance1D = length(endpointDistance);
     #elif defined(CAP_STYLE_TRIANGLE)
-    highp const float distanceS = distance_.x + distance_.y;
+    highp const float distance1D = endpointDistance.x + endpointDistance.y;
     #else
     #error
     #endif
 
-    // TODO clean this up so it doesn't include width (which isn't present for butts)
-    mediump const float factor = smoothstep(width*0.5 - smoothness, width*0.5 + smoothness, distanceS);
+    mediump const float factor = smoothstep(width*0.5 - smoothness, width*0.5 + smoothness, distance1D);
 
     fragmentColor = mix(
         #ifdef VERTEX_COLOR
