@@ -26,9 +26,11 @@
 */
 
 /** @file
- * @brief Struct @ref Magnum::Shaders::LineDrawUniform, @ref Magnum::Shaders::LineMaterialUniform, enum @ref Magnum::Shaders::LineCapStyle, @ref Magnum::Shaders::LineJoinStyle
+ * @brief Struct @ref Magnum::Shaders::LineDrawUniform, @ref Magnum::Shaders::LineMaterialUniform, enum @ref Magnum::Shaders::LineCapStyle, @ref Magnum::Shaders::LineJoinStyle, @ref Magnum::Shaders::LineVertexAnnotation, enum set @ref Magnum::Shaders::LineVertexAnnotations
  * @m_since_latest
  */
+
+#include <Corrade/Containers/EnumSet.h>
 
 #include "Magnum/Magnum.h"
 #include "Magnum/Math/Color.h"
@@ -80,8 +82,7 @@ enum class LineCapStyle: UnsignedByte {
      * @ref TODOTODO image
      *
      * @see @ref LineMaterialUniform::backgroundColor,
-     *      @ref LineGL::setBackgroundColor(),
-     *
+     *      @ref LineGL::setBackgroundColor()
      */
     Triangle
 };
@@ -115,6 +116,66 @@ enum class LineJoinStyle: UnsignedByte {
      */
     Bevel
 };
+
+/**
+@brief Line vertex annotation
+@m_since_latest
+
+A line segment drawn by the @ref LineGL shader consists of four vertices, first
+two having the @ref LineGL::Position attribute set to the first point of the
+segment and second two having it set to the second point of the segment. The
+@ref LineGL::Annotation attribute is then @ref LineVertexAnnotations,
+containing a combination of these bits, according to which the vertex shader
+performs expansion of the four points to a quad.
+
+@ref TODOTODO image with cap and a join, mark the vertices with appropriate
+    bits
+
+The type is 32-bit in order to match the default type of the
+@ref LineGL::Annotation attribute, but the values are guaranteed to fit into 8
+bits.
+*/
+enum class LineVertexAnnotation: UnsignedInt {
+    /**
+     * The point extends upwards assuming a left-to-right direction. If not
+     * set, it extends downwards.
+     */
+    Up = 1 << 0,
+
+    /**
+     * The point is forming a join with a neighboring line segment defined by
+     * either @ref LineGL::PreviousPosition or @ref LineGL::NextPosition based
+     * on whether @ref LineVertexAnnotation::Begin is set. If not set, the
+     * point is forming a line cap.
+     */
+    Join = 1 << 1,
+
+    /**
+     * The point is forming the beginning of the line segment, i.e.
+     * @ref LineGL::NextPosition contains the other point of the line segment.
+     * If not set, @ref LineGL::PreviousPosition contains the other point of
+     * the line segment instead.
+     *
+     * If @ref LineVertexAnnotation::Join is set as well, the point is a common
+     * point of two neighboring line segments and @ref LineGL::PreviousPosition
+     * contains the other point of the neighboring line segment. If
+     * @ref LineVertexAnnotation::Join is set and this bit is not set,
+     * @ref LineGL::NextPosition contaons the other point of the neighboring
+     * line segment instead.
+     */
+    Begin = 1 << 2,
+};
+
+/**
+@brief Line vertex annotations
+@m_since_latest
+
+Contents of the @ref LineGL::Annotation attribute. See
+@ref LineVertexAnnotation for more information.
+*/
+typedef Containers::EnumSet<LineVertexAnnotation> LineVertexAnnotations;
+
+CORRADE_ENUMSET_OPERATORS(LineVertexAnnotations)
 
 /**
  * @debugoperatorenum{LineCapStyle}

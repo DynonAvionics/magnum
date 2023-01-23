@@ -220,18 +220,18 @@ const struct {
         16.0f, 0.0f, {}, {},
         LineCapStyle::Butt, {},
         "caps-butt-joins-miter-flat.tga"},
-    {"caps butt, joins bevel",
+    {"caps butt, joins bevel", /** @todo bevel smoothing is off for 30° */
         16.0f, 1.0f, {}, {},
         LineCapStyle::Butt, LineJoinStyle::Bevel,
-        "caps-butt-joins-bevel.tga"}, // TODO the smoothing is off for 30°
+        "caps-butt-joins-bevel.tga"},
     {"caps square, joins miter",
         16.0f, 1.0f, {}, {},
         LineCapStyle::Square, LineJoinStyle::Miter,
         "caps-square-joins-miter.tga"},
-    {"caps square, joins bevel",
+    {"caps square, joins bevel", /** @todo bevel smoothing is off for 30° */
         16.0f, 1.0f, {}, {},
         LineCapStyle::Square, LineJoinStyle::Bevel,
-        "caps-square-joins-bevel.tga"}, // TODO the smoothing is off for 30°
+        "caps-square-joins-bevel.tga"},
     {"caps square, joins miter, limit 3.95",
         16.0f, 1.0f, 3.95f, {},
         LineCapStyle::Square, LineJoinStyle::Miter,
@@ -292,10 +292,10 @@ const struct {
     {"caps square, joins miter",
         10.0f, 1.0f, 8.0f, {}, {}, false,
         "cube3D-caps-square-joins-miter.tga"},
-    {"caps butt, joins bevel",
+    {"caps butt, joins bevel", /** @todo bevel smoothing is off */
         10.0f, 1.0f, {}, LineCapStyle::Butt, LineJoinStyle::Bevel, false,
         "cube3D-caps-butt-joins-bevel.tga"},
-    {"depth", // TODO fix
+    {"depth", /** @todo depth is imprecise for wide lines */
         /* Not smooth, as the cut-off pieces are jaggy anyway */
         10.0f, 0.0f, 8.0f, {}, {}, true,
         "cube3D-depth.tga"},
@@ -933,14 +933,7 @@ template<UnsignedInt dimensions> struct Vertex {
     VectorTypeFor<dimensions, Float> previousPosition;
     VectorTypeFor<dimensions, Float> position;
     VectorTypeFor<dimensions, Float> nextPosition;
-    UnsignedInt annotation;
-};
-
-// TODO make these a constant (EnumSet?!) in Line.h
-enum: Int {
-    LineUp = 1,
-    LineBegin = 2,
-    LineCap = 4
+    LineVertexAnnotations annotation;
 };
 
 template<UnsignedInt dimensions> Containers::Array<Vertex<dimensions>> generateLineMeshVertices(Containers::StridedArrayView1D<const VectorTypeFor<dimensions, Float>> lineSegments) {
@@ -951,20 +944,18 @@ template<UnsignedInt dimensions> Containers::Array<Vertex<dimensions>> generateL
         vertices[i*2 + 0].position =
             vertices[i*2 + 1].position =
                 lineSegments[i];
-        vertices[i*2 + 0].annotation = LineUp|(i % 2 ? 0 : LineBegin);
-        vertices[i*2 + 1].annotation = i % 2 ? 0 : LineBegin;
+        if(i % 2 == 0)
+            vertices[i*2 + 0].annotation =
+                vertices[i*2 + 1].annotation = LineVertexAnnotation::Begin;
+        vertices[i*2 + 0].annotation |= LineVertexAnnotation::Up;
     }
 
-    /* Mark caps if it's the beginning, the end or the segments are disjoint */
-    for(std::size_t i: {std::size_t{0}, std::size_t{1}, vertices.size() - 2, vertices.size() - 1}) {
-        vertices[i].annotation |= LineCap;
-    }
+    /* Mark joins if the segment endpoints are the same */
     for(std::size_t i = 4; i < vertices.size(); i += 4) {
-        if(vertices[i - 2].position == vertices[i].position)
+        if(vertices[i - 2].position != vertices[i].position)
             continue;
-        for(std::size_t j: {i - 2, i - 1, i + 0, i + 1}) {
-            vertices[j].annotation |= LineCap;
-        }
+        for(std::size_t j: {i - 2, i - 1, i + 0, i + 1})
+            vertices[j].annotation |= LineVertexAnnotation::Join;
     }
 
     /* Prev positions for segment last vertices -- the other segment point */
@@ -973,9 +964,10 @@ template<UnsignedInt dimensions> Containers::Array<Vertex<dimensions>> generateL
             vertices[i + 1].previousPosition =
                 vertices[i - 2].position;
     }
-    /* Prev positions for segment first vertices -- a neighbor segment, if any */
+    /* Prev positions for segment first vertices -- a neighbor segment, if it's
+       a join */
     for(std::size_t i = 4; i < Containers::arraySize(vertices); i += 4) {
-        if(vertices[i].annotation & LineCap)
+        if(!(vertices[i].annotation & LineVertexAnnotation::Join))
             continue;
         vertices[i + 0].previousPosition =
             vertices[i + 1].previousPosition =
@@ -989,7 +981,7 @@ template<UnsignedInt dimensions> Containers::Array<Vertex<dimensions>> generateL
     }
     /* Next positions for last vertices -- a neighbor segment, if any */
     for(std::size_t i = 2; i < Containers::arraySize(vertices) - 4; i += 4) {
-        if(vertices[i].annotation & LineCap)
+        if(!(vertices[i].annotation & LineVertexAnnotation::Join))
             continue;
         vertices[i + 0].nextPosition =
             vertices[i + 1].nextPosition =
@@ -999,7 +991,7 @@ template<UnsignedInt dimensions> Containers::Array<Vertex<dimensions>> generateL
     return vertices;
 }
 
-Containers::Array<UnsignedInt> generateLineMeshIndices(Containers::StridedArrayView1D<const UnsignedInt> vertexAnnotations) {
+Containers::Array<UnsignedInt> generateLineMeshIndices(Containers::StridedArrayView1D<const LineVertexAnnotations> vertexAnnotations) {
     Containers::Array<UnsignedInt> indices;
     for(UnsignedInt i = 0; i != vertexAnnotations.size()/4; ++i) {
         arrayAppend(indices, {
@@ -1013,7 +1005,7 @@ Containers::Array<UnsignedInt> generateLineMeshIndices(Containers::StridedArrayV
 
         /* Add also indices for the bevel in both orientations (one will always
            degenerate) */
-        if(!(vertexAnnotations[i*4 + 3] & LineCap)) {
+        if(vertexAnnotations[i*4 + 3] & LineVertexAnnotation::Join) {
             arrayAppend(indices, {
                 i*4 + 2,
                 i*4 + 3,
@@ -1525,13 +1517,13 @@ template<LineGL3D::Flag flag> void LineGLTest::renderCube3D() {
 
     Containers::Array<UnsignedInt> indices = generateLineMeshIndices(stridedArrayView(vertices).slice(&Vertex<3>::annotation));
 
-    /* Remove the line cap annotation from the looped parts. Has to be done
-       *after* generating indices because otherwise it'd assume the next point
-       of the join is right after which it isn't. */
+    /* Add line join annotation to the looped parts. Has to be done *after*
+       generating indices because otherwise it'd assume the next point of the
+       join is right after which it isn't. */
     for(std::size_t i: {0, 1, 14, 15, 16, 17, 30, 31}) {
         CORRADE_ITERATION(i);
-        CORRADE_VERIFY(vertices[i].annotation & LineCap);
-        vertices[i].annotation &= ~LineCap;
+        CORRADE_VERIFY(!(vertices[i].annotation & LineVertexAnnotation::Join));
+        vertices[i].annotation |= LineVertexAnnotation::Join;
     }
 
     /* Add indices for the two newly created joins */

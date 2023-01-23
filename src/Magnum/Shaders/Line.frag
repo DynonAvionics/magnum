@@ -152,7 +152,7 @@ in highp float halfSegmentLength;
 #ifdef CAN_USE_NOPERSPECTIVE
 noperspective
 #endif
-in lowp float hasCap;
+in highp float hasCap;
 
 #ifdef VERTEX_COLOR
 in lowp vec4 interpolatedVertexColor;
@@ -194,8 +194,8 @@ void main() {
     #endif
     lowp const vec4 backgroundColor = materials[materialId].backgroundColor;
     lowp const vec4 color = materials[materialId].color;
-    lowp const float width = materials[materialId].material_width;
-    lowp const float smoothness = materials[materialId].material_smoothness;
+    mediump const float width = materials[materialId].material_width;
+    mediump const float smoothness = materials[materialId].material_smoothness;
     #endif
 
     // TODO better names ffs
@@ -218,14 +218,7 @@ void main() {
     #endif
 
     // TODO clean this up so it doesn't include width (which isn't present for butts)
-    const highp float factor = smoothstep(width*0.5 - smoothness, width*0.5 + smoothness, distanceS);
-
-//     fragmentColor = vec4(centerDistanceSigned*0.5/vec2(halfSegmentLength + width*0.5, width*0.5) + vec2(0.5), 0.0, 1.0);
-//     return;
-
-
-//     fragmentColor = vec4(distance_/(width*0.5 + smoothness), 0.0, 1.0);
-//     return;
+    mediump const float factor = smoothstep(width*0.5 - smoothness, width*0.5 + smoothness, distanceS);
 
     fragmentColor = mix(
         #ifdef VERTEX_COLOR

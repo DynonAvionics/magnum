@@ -30,6 +30,8 @@
 #include <Corrade/Utility/Format.h>
 
 #include "Magnum/Shaders/LineGL.h"
+/* Yes, really */
+#include "Magnum/Shaders/generic.glsl"
 
 namespace Magnum { namespace Shaders { namespace Test { namespace {
 
@@ -37,6 +39,8 @@ namespace Magnum { namespace Shaders { namespace Test { namespace {
    is a common suffix used to mark tests that need a GL context. Ugly, I know. */
 struct LineGL_Test: TestSuite::Tester {
     explicit LineGL_Test();
+
+    void glslAttributeMatch();
 
     template<UnsignedInt dimensions> void constructConfigurationDefault();
     template<UnsignedInt dimensions> void constructConfigurationSetters();
@@ -50,7 +54,9 @@ struct LineGL_Test: TestSuite::Tester {
 };
 
 LineGL_Test::LineGL_Test() {
-    addTests({&LineGL_Test::constructConfigurationDefault<2>,
+    addTests({&LineGL_Test::glslAttributeMatch,
+
+              &LineGL_Test::constructConfigurationDefault<2>,
               &LineGL_Test::constructConfigurationDefault<3>,
               &LineGL_Test::constructConfigurationSetters<2>,
               &LineGL_Test::constructConfigurationSetters<3>,
@@ -63,6 +69,19 @@ LineGL_Test::LineGL_Test() {
               &LineGL_Test::debugFlag,
               &LineGL_Test::debugFlags,
               &LineGL_Test::debugFlagsSupersets});
+}
+
+void LineGL_Test::glslAttributeMatch() {
+    /* Position, Color and ObjectId tested in GenericGL_Test */
+
+    CORRADE_COMPARE(LINE_PREVIOUS_POSITION_ATTRIBUTE_LOCATION, LineGL2D::PreviousPosition::Location);
+    CORRADE_COMPARE(LINE_PREVIOUS_POSITION_ATTRIBUTE_LOCATION, LineGL3D::PreviousPosition::Location);
+
+    CORRADE_COMPARE(LINE_NEXT_POSITION_ATTRIBUTE_LOCATION, LineGL2D::NextPosition::Location);
+    CORRADE_COMPARE(LINE_NEXT_POSITION_ATTRIBUTE_LOCATION, LineGL3D::NextPosition::Location);
+
+    CORRADE_COMPARE(LINE_ANNOTATION_ATTRIBUTE_LOCATION, LineGL2D::Annotation::Location);
+    CORRADE_COMPARE(LINE_ANNOTATION_ATTRIBUTE_LOCATION, LineGL3D::Annotation::Location);
 }
 
 template<UnsignedInt dimensions> void LineGL_Test::constructConfigurationDefault() {

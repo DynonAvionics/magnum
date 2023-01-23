@@ -218,22 +218,10 @@ in highp vec3 nextPosition;
 #error
 #endif
 
-/* Point annotation, ccombination of bits indicating the following:
-
-    -   line up, in which case the point extends above the line to form a quad;
-        and conversely if not set the point extends below the line to form a
-        quad
-    -   line begin, in which case the second point of the segment is stored in
-        the nextPosition input, and the neighboring segment point (if any) is
-        stored in previousPosition; and conversely if not set the second point
-        of the segment is stored in the previousPosition input, and the
-        neighboring segment point (if any) is stored in nextPosition
-    -   line cap, in which case the neighboring segment point should be ignored
-        and instead a line cap formed; and conversely if not set the
-        neighboring segment points are meant to be used to form a line join */
+/* Point annotation, matching the LineVertexAnnotation enum bits */
 #define ANNOTATION_UP_MASK 1u
-#define ANNOTATION_BEGIN_MASK 2u
-#define ANNOTATION_CAP_MASK 4u
+#define ANNOTATION_JOIN_MASK 2u
+#define ANNOTATION_BEGIN_MASK 4u
 #ifdef EXPLICIT_ATTRIB_LOCATION
 layout(location = LINE_ANNOTATION_ATTRIBUTE_LOCATION)
 #endif
@@ -268,7 +256,6 @@ in highp mat4 instancedTransformationMatrix;
 
 /* Outputs */
 
-// TODO document, maybe join together?
 #ifdef CAN_USE_NOPERSPECTIVE
 noperspective
 #endif
@@ -277,7 +264,7 @@ out highp float halfSegmentLength;
 #ifdef CAN_USE_NOPERSPECTIVE
 noperspective
 #endif
-out lowp float hasCap;
+out highp float hasCap;
 
 #ifdef VERTEX_COLOR
 out lowp vec4 interpolatedVertexColor;
@@ -322,12 +309,11 @@ void main() {
     #else
     #define materialId 0u
     #endif
-    lowp const float width = materials[materialId].material_width;
-    lowp const float smoothness = materials[materialId].material_smoothness;
+    mediump const float width = materials[materialId].material_width;
+    mediump const float smoothness = materials[materialId].material_smoothness;
     highp const float miterLimit = materials[materialId].material_miterLimit;
     #endif
 
-    // TODO look at the precision qualifiers, same for *.frag
     #ifdef TWO_DIMENSIONS
     highp const vec2 transformedPosition = (transformationProjectionMatrix*
         #ifdef INSTANCED_TRANSFORMATION
@@ -385,7 +371,7 @@ void main() {
                  ^        ^
                  e        e
                  |        |
-     [UP, BEGIN] 0-d-->   2-d--> [END]
+     [UP, BEGIN] 0-d-->   2-d--> [UP]
 
                  A        B
 
@@ -398,8 +384,8 @@ void main() {
     highp const vec2 lineDirection = bool(annotation & ANNOTATION_BEGIN_MASK) ?
         transformedNextPosition - transformedPosition :
         transformedPosition - transformedPreviousPosition;
-    highp const float edgeSign = bool(annotation & ANNOTATION_UP_MASK) ? 1.0 : -1.0;
-    highp const float neighborSign = bool(annotation & ANNOTATION_BEGIN_MASK) ? -1.0 : 1.0;
+    mediump const float edgeSign = bool(annotation & ANNOTATION_UP_MASK) ? 1.0 : -1.0;
+    mediump const float neighborSign = bool(annotation & ANNOTATION_BEGIN_MASK) ? -1.0 : 1.0;
 
     /* Line direction and its length converted from the [-1, 1] unit square to
        the screen space so we properly take aspect ratio into account. In the
@@ -417,11 +403,11 @@ void main() {
     /* Line width includes also twice the smoothness (because it's a radius
        instead of a diameter, and is on both sides of the line), and is rounded
        to whole pixels. So for the edge distance we need half of it. */
-    highp const float edgeDistance = ceil(width + 2.0*smoothness)*0.5;
+    mediump const float edgeDistance = ceil(width + 2.0*smoothness)*0.5;
     #ifdef CAP_STYLE_BUTT
-    highp const float capDistance = ceil(2.0*smoothness)*0.5;
+    mediump const float capDistance = ceil(2.0*smoothness)*0.5;
     #elif defined(CAP_STYLE_SQUARE) || defined(CAP_STYLE_ROUND) || defined(CAP_STYLE_TRIANGLE)
-    highp const float capDistance = edgeDistance;
+    mediump const float capDistance = edgeDistance;
     #else
     #error
     #endif
@@ -493,39 +479,8 @@ void main() {
         vec2(halfSegmentLength*neighborSign, edgeDistance*edgeSign);
     highp vec2 screenspacePointDirection;
 
-    /* Line cap -- the quad corner 0/1/2/3 a sum of the signed cap distance
-       (`cdS`) and signed edge distance vectors (`eDS`), which are formed by
-       the line direction vector `d` and its perpendicular vector. Neighbor
-       direction (i.e., the other input from the one used to calculate
-       `lineDirection`) isn't used at all in this case.
-
-          cDS
-        0<---+----------
-        |    ^
-        |    | eDS
-        |    |
-        |    A--d-->
-        |
-        |
-        |
-        1---
-
-       The signed center distance a sum of half segment length and the cap
-       distance, multiplied by the cap sign (thus negative for points derived
-       from A and positive for B). */
-    if(bool(annotation & ANNOTATION_CAP_MASK)) {
-        screenspacePointDirection =
-            screenspaceLineDirectionNormalized*capDistance*neighborSign +
-            screenspaceEdgeDirectionNormalized*edgeDistance*edgeSign;
-
-        /* Add signed cap distance to the center distance */
-        centerDistanceSigned.x += capDistance*neighborSign;
-
-        /* No cap here, store a negative value */
-        hasCap = abs(centerDistanceSigned.x);
-
-    /* Line join otherwise */
-    } else {
+    /* Line join */
+    if(bool(annotation & ANNOTATION_JOIN_MASK)) {
         /* Neighbor direction `nd`, needed to distinguish whether this is the
            inner or outer join point. Calculated with basically an inverse of
            the logic used to calculate `lineDirection`, with the neighbor
@@ -646,11 +601,42 @@ void main() {
             centerDistanceSigned.x += dot(screenspacePointDirection, screenspaceLineDirectionNormalized);
         }
 
-        /* No cap here, store a negative value */
-        // TODO if sign(centerDistanceSigned.x) is different from neighborSign,
-        //  then the sign here should be taken based on whether the other point
-        //  is a cap -- and thus we need the other two point flags
+        /* No cap here, store a negative value. TODO If
+           sign(centerDistanceSigned.x) is different from neighborSign, then
+           the sign here should be taken based on whether the other point is a
+           join -- add more bits to the vertex annotation? */
         hasCap = -abs(centerDistanceSigned.x);
+
+    /* Line cap otherwise -- the quad corner 0/1/2/3 a sum of the signed cap
+       distance (`cdS`) and signed edge distance vectors (`eDS`), which are
+       formed by the line direction vector `d` and its perpendicular vector.
+       Neighbor direction (i.e., the other input from the one used to calculate
+       `lineDirection`) isn't used at all in this case.
+
+          cDS
+        0<---+----------
+        |    ^
+        |    | eDS
+        |    |
+        |    A--d-->
+        |
+        |
+        |
+        1---
+
+       The signed center distance a sum of half segment length and the cap
+       distance, multiplied by the cap sign (thus negative for points derived
+       from A and positive for B). */
+    } else {
+        screenspacePointDirection =
+            screenspaceLineDirectionNormalized*capDistance*neighborSign +
+            screenspaceEdgeDirectionNormalized*edgeDistance*edgeSign;
+
+        /* Add signed cap distance to the center distance */
+        centerDistanceSigned.x += capDistance*neighborSign;
+
+        /* Cap is here, store a positive value */
+        hasCap = abs(centerDistanceSigned.x);
     }
 
     /* Undo the screenspace projection */
@@ -661,6 +647,7 @@ void main() {
     #elif defined(THREE_DIMENSIONS)
     gl_Position = vec4(transformedPosition4.xy + pointDirection*transformedPosition4.w, transformedPosition4.zw);
     #ifndef CAN_USE_NOPERSPECTIVE
+    /* See the CAN_USE_NOPERSPECTIVE macro definition at the top for details */
     gl_Position /= gl_Position.w;
     #endif
     #else
