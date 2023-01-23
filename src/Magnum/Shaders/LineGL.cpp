@@ -178,9 +178,10 @@ template<UnsignedInt dimensions> typename LineGL<dimensions>::CompileState LineG
        bindFragmentDataLocation() */
     #ifndef MAGNUM_TARGET_GLES
     if(!context.isExtensionSupported<GL::Extensions::ARB::explicit_attrib_location>(version)) {
-        out.bindAttributeLocation(Position::Location, "positionPointMarkerComponent"_s);
-        out.bindAttributeLocation(PreviousPosition::Location, "direction"_s);
-        out.bindAttributeLocation(NextPosition::Location, "neighborDirection"_s);
+        out.bindAttributeLocation(Position::Location, "position"_s);
+        out.bindAttributeLocation(PreviousPosition::Location, "previousPosition"_s);
+        out.bindAttributeLocation(NextPosition::Location, "nextPosition"_s);
+        out.bindAttributeLocation(Annotation::Location, "annotation"_s);
         if(configuration.flags() & Flag::VertexColor)
             out.bindAttributeLocation(Color3::Location, "vertexColor"_s); /* Color4 is the same */
         if(configuration.flags() & Flag::ObjectId) {

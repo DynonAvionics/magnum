@@ -25,6 +25,8 @@
 
 #include "Line.h"
 
+#include <Corrade/Containers/String.h>
+
 #include "Magnum/Shaders/Implementation/lineMiterLimit.h"
 
 namespace Magnum { namespace Shaders {
