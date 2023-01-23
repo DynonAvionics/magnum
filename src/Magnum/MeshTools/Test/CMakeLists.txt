@@ -35,7 +35,6 @@ corrade_add_test(MeshToolsDuplicateTest DuplicateTest.cpp LIBRARIES MagnumMeshTo
 corrade_add_test(MeshToolsFilterAttributesTest FilterAttributesTest.cpp LIBRARIES MagnumMeshToolsTestLib)
 corrade_add_test(MeshToolsFlipNormalsTest FlipNormalsTest.cpp LIBRARIES MagnumMeshToolsTestLib)
 corrade_add_test(MeshToolsGenerateIndicesTest GenerateIndicesTest.cpp LIBRARIES MagnumMeshToolsTestLib)
-corrade_add_test(MeshToolsGenerateLinesTest GenerateLinesTest.cpp LIBRARIES MagnumMeshToolsTestLib)
 corrade_add_test(MeshToolsGenerateNormalsTest GenerateNormalsTest.cpp LIBRARIES MagnumMeshToolsTestLib MagnumPrimitives)
 corrade_add_test(MeshToolsInterleaveTest InterleaveTest.cpp LIBRARIES MagnumMeshToolsTestLib)
 corrade_add_test(MeshToolsReferenceTest ReferenceTest.cpp LIBRARIES MagnumMeshToolsTestLib MagnumPrimitives)
@@ -126,4 +125,9 @@ if(MAGNUM_BUILD_GL_TESTS)
             add_dependencies(MeshToolsCompileGLTest TgaImporter)
         endif()
     endif()
+
+    corrade_add_test(MeshToolsCompileLinesGLTest CompileLinesGLTest.cpp
+        LIBRARIES
+            MagnumOpenGLTester
+            MagnumMeshToolsTestLib)
 endif()

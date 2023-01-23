@@ -41,7 +41,6 @@ set(MagnumMeshTools_GracefulAssert_SRCS
     FilterAttributes.cpp
     FlipNormals.cpp
     GenerateIndices.cpp
-    GenerateLines.cpp
     GenerateNormals.cpp
     Interleave.cpp
     Reference.cpp
@@ -57,7 +56,6 @@ set(MagnumMeshTools_HEADERS
     FilterAttributes.h
     FlipNormals.h
     GenerateIndices.h
-    GenerateLines.h
     GenerateNormals.h
     Interleave.h
     InterleaveFlags.h
@@ -85,10 +83,12 @@ if(MAGNUM_TARGET_GL)
         FullScreenTriangle.cpp)
 
     list(APPEND MagnumMeshTools_GracefulAssert_SRCS
-        Compile.cpp)
+        Compile.cpp
+        CompileLines.cpp)
 
     list(APPEND MagnumMeshTools_HEADERS
         Compile.h
+        CompileLines.h
         FullScreenTriangle.h)
 endif()
 

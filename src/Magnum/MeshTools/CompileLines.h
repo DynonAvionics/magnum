@@ -1,3 +1,5 @@
+#ifndef Magnum_MeshTools_CompileLines_h
+#define Magnum_MeshTools_CompileLines_h
 /*
     This file is part of Magnum.
 
@@ -23,19 +25,29 @@
     DEALINGS IN THE SOFTWARE.
 */
 
-#include <Corrade/TestSuite/Tester.h>
+#include <Corrade/Containers/EnumSet.hpp>
 
-#include "Magnum/MeshTools/GenerateLines.h"
+#include "Magnum/GL/GL.h"
+#include "Magnum/MeshTools/visibility.h"
+#include "Magnum/Trade/Trade.h"
 
-namespace Magnum { namespace MeshTools { namespace Test { namespace {
+namespace Magnum { namespace MeshTools {
 
-struct GenerateLinesTest: TestSuite::Tester {
-    explicit GenerateLinesTest();
+// TODO disable this if TARGET_GL isn't enabled, doc that
+
+enum class CompileLinesFlag: UnsignedInt {
+    // TODO "interpret index buffer as line strips and loops", asserting if
+    //  more than 2 indices share the same vertex
+    // TODO overlap, just a single triangle for bevels, no bevels
+    // TODO all lines are just lone segments, so no prev/next attributes
 };
 
-GenerateLinesTest::GenerateLinesTest() {
-}
+typedef Containers::EnumSet<CompileLinesFlag> CompileLinesFlags;
 
-}}}}
+CORRADE_ENUMSET_OPERATORS(CompileLinesFlags)
 
-CORRADE_TEST_MAIN(Magnum::MeshTools::Test::GenerateLinesTest)
+MAGNUM_MESHTOOLS_EXPORT GL::Mesh compileLines(const Trade::MeshData& lineMesh, CompileLinesFlags flags = {});
+
+}}
+
+#endif
