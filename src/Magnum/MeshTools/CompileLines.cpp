@@ -62,76 +62,80 @@ GL::Mesh compileLines(const Trade::MeshData& lineMesh, const CompileLinesFlags f
     CORRADE_ASSERT(lineMesh.primitive() == MeshPrimitive::Lines ||
                    lineMesh.primitive() == MeshPrimitive::LineStrip ||
                    lineMesh.primitive() == MeshPrimitive::LineLoop,
-        "Trade::MeshTools::generateLines(): expected a line primitive, got" << lineMesh.primitive(), GL::Mesh{});
+        "Trade::MeshTools::compileLines(): expected a line primitive, got" << lineMesh.primitive(), GL::Mesh{});
 
     CORRADE_INTERNAL_ASSERT(!flags); // TODO
 
-    /* Convert to a non-indexed mesh with Lines as a primitive */
-    Trade::MeshData lineMeshNonIndexed = MeshTools::reference(lineMesh);
+    // TODO this will assert if the count in MeshData is wrong, check here?
+    //  TODO make some isElementCountValid() utility?
+    const UnsignedInt quadCount = primitiveCount(lineMesh.primitive(), lineMesh.isIndexed() ? lineMesh.indexCount() : lineMesh.vertexCount());
 
-    if(lineMeshNonIndexed.primitive() != MeshPrimitive::Lines) {
-        if(lineMeshNonIndexed.isIndexed()) // TODO drop once generateIndices is fixed
-            lineMeshNonIndexed = MeshTools::duplicate(lineMeshNonIndexed);
-        lineMeshNonIndexed = MeshTools::generateIndices(lineMeshNonIndexed);
-    };
-    if(lineMeshNonIndexed.isIndexed())
-        lineMeshNonIndexed = MeshTools::duplicate(lineMeshNonIndexed);
+    Containers::Array<UnsignedInt> originalIndexData;
+    Containers::StridedArrayView2D<const char> originalIndices;
+    if(lineMesh.primitive() == MeshPrimitive::Lines) {
+        if(lineMesh.isIndexed())
+            originalIndices = lineMesh.indices();
+    } else {
+        if(lineMesh.primitive() == MeshPrimitive::LineStrip) {
+            if(lineMesh.isIndexed())
+                originalIndexData = generateLineStripIndices(lineMesh.indices());
+            else
+                originalIndexData = generateLineStripIndices(lineMesh.vertexCount());
+        } else if(lineMesh.primitive() == MeshPrimitive::LineLoop) {
+            if(lineMesh.isIndexed())
+                originalIndexData = generateLineLoopIndices(lineMesh.indices());
+            else
+                originalIndexData = generateLineLoopIndices(lineMesh.vertexCount());
+        } else CORRADE_INTERNAL_ASSERT_UNREACHABLE(); /* LCOV_EXCL_LINE */
 
-    // TODO the above APIs should check this, but this can fire if the input is
-    //  already a non-indexed Lines mesh
-    CORRADE_INTERNAL_ASSERT(lineMeshNonIndexed.vertexCount() % 2 == 0);
-    const UnsignedInt quadCount = lineMeshNonIndexed.vertexCount()/2;
+        originalIndices = Containers::arrayCast<2, const char>(stridedArrayView(originalIndexData));
+    }
+
+    /* Create a source index array for duplicate() by combining indices of a
+       form 00112233 (i.e., duplicating every point twice) with the original
+       mesh indices (if there are any). The same memory will be subsequently
+       reused for the actual index buffer so it's not a wasted allocation. */
+    Containers::Array<UnsignedInt> pointDuplicationIndices{NoInit, quadCount*4}; // TODO make larger for the actual index buffer below (*6 instead of *4)
+    for(UnsignedInt i = 0; i != quadCount; ++i) {
+        pointDuplicationIndices[i*4 + 0] =
+            pointDuplicationIndices[i*4 + 1] = i*2 + 0;
+        pointDuplicationIndices[i*4 + 2] =
+            pointDuplicationIndices[i*4 + 3] = i*2 + 1;
+    }
+
+    // TODO document what is this actually
+    if(originalIndices) // TODO what if the mesh is empty? does it treat this as non-indexed? test
+        // TODO ffs this doesn't work if the original indices have different size :/
+        duplicateInto(pointDuplicationIndices, originalIndices, Containers::arrayCast<2, char>(stridedArrayView(pointDuplicationIndices)));
 
     /* Position is required, everything else is optional */
     const Containers::Optional<UnsignedInt> positionAttributeId = lineMesh.findAttributeId(Trade::MeshAttribute::Position);
     CORRADE_ASSERT(positionAttributeId,
-        "Trade::MeshTools::generateLines(): the mesh has no positions", GL::Mesh{});
+        "Trade::MeshTools::compileLines(): the mesh has no positions", GL::Mesh{});
 
-    /* Allocate the output interleaved mesh including three additional
+    /* TODO update the doc to say what's this actually
+     *
+     * Allocate the output interleaved mesh including three additional
        attributes; the original position attribute should stay on the same
        index */
-    // TODO need a way to change the primitive to Triangles, otherwise it'll
-    //  stay Lines
-    Trade::MeshData mesh = interleavedLayout(lineMeshNonIndexed, lineMeshNonIndexed.vertexCount()*2, {
+    // TODO test with a zero-attribute & zero-vertex mesh
+    Trade::MeshData mesh = duplicate(Trade::MeshData{MeshPrimitive::Triangles, {}, pointDuplicationIndices, Trade::MeshIndexData{pointDuplicationIndices}, {}, lineMesh.vertexData(), Trade::meshAttributeDataNonOwningArray(lineMesh.attributeData()), lineMesh.vertexCount()}, {
         Trade::MeshAttributeData{MeshAttributePreviousPosition,
-            lineMeshNonIndexed.attributeFormat(*positionAttributeId), nullptr},
+            lineMesh.attributeFormat(*positionAttributeId), nullptr},
         Trade::MeshAttributeData{MeshAttributeNextPosition,
-            lineMeshNonIndexed.attributeFormat(*positionAttributeId), nullptr},
+            lineMesh.attributeFormat(*positionAttributeId), nullptr},
         Trade::MeshAttributeData{MeshAttributeAnnotation,
             VertexFormat::UnsignedInt, nullptr},
     });
+
     CORRADE_INTERNAL_ASSERT(mesh.attributeName(*positionAttributeId) == Trade::MeshAttribute::Position);
-
-    /* Copy the original data over. Given input arrays ABCDEF, we want
-       AABBCCDDEEFF, i.e. every point duplicated. That can be achieved by
-       "reshaping" every array as 3D with dimensions (size, 1, elementSize),
-       broadcasting the second dimensions to 2 items and copying to the output
-       of size (size/2, 2, elementSize).
-
-         ABCDEF -> ABCDEF
-                \> ABCDEF */
-    for(UnsignedInt i = 0; i != lineMeshNonIndexed.attributeCount(); ++i) {
-        // TODO we could also just have an index buffer that's the original
-        //  duplicated, and then call duplicate() just once .. urg but it
-        //  wouldn't include the extra attribs
-        const Containers::StridedArrayView2D<const char> in = lineMeshNonIndexed.attribute(i);
-        const Containers::StridedArrayView3D<const char> in3{lineMeshNonIndexed.vertexData(), static_cast<const char*>(in.data()),
-            {in.size()[0], 1, in.size()[1]},
-            {in.stride()[0], 0, in.stride()[1]}};
-
-        const Containers::StridedArrayView2D<char> out = mesh.mutableAttribute(i);
-        const Containers::StridedArrayView3D<char> out3{mesh.mutableVertexData(), static_cast<char*>(out.data()),
-            {out.size()[0]/2, 2, out.size()[1]},
-            {out.stride()[0]*2, out.stride()[0], out.stride()[1]}};
-
-        Utility::copy(in3.broadcasted<1>(2), out3);
-    }
 
     /* Fill in previous/next positions -- given AABBCCDDEEFF, we want to copy
        Position from __BB__DD__FF to AA__CC__EE__'s NextPosition; and Position
        from AA__CC__EE__ to __BB__DD__FF's NextPosition. Form 3D arrays again,
        strip a prefix of either 0 or 2, pick every 2nd in the first dimension,
        and copy. */
+    // TODO well, this comment is only for the first half
     const Containers::StridedArrayView2D<const char> positions = mesh.attribute(Trade::MeshAttribute::Position);
     {
         const Containers::StridedArrayView3D<const char> positions3{mesh.vertexData(), static_cast<const char*>(positions.data()),
@@ -154,6 +158,22 @@ GL::Mesh compileLines(const Trade::MeshData& lineMesh, const CompileLinesFlags f
         Utility::copy(
             positions3.exceptPrefix(1).every(2),
             nextPositions3.exceptSuffix(1).every(2));
+
+        /* Fill in previous/next neighbor positions if this is a line loop /
+           line strip */
+        if(lineMesh.primitive() == MeshPrimitive::LineStrip ||
+           lineMesh.primitive() == MeshPrimitive::LineLoop) {
+            Utility::copy(
+                positions3.exceptSuffix(2).every(2),
+                previousPositions3.exceptPrefix(2).every(2));
+            Utility::copy(
+                positions3.exceptPrefix(3).every(2),
+                nextPositions3.exceptPrefix(1).exceptSuffix(2).every(2));
+        }
+        if(lineMesh.primitive() == MeshPrimitive::LineLoop) {
+            Utility::copy(positions3[1], nextPositions3.back());
+            Utility::copy(positions3[positions3.size()[0] - 2], previousPositions3.front());
+        }
     }
 
     /* Fill in point annotation */
@@ -168,17 +188,35 @@ GL::Mesh compileLines(const Trade::MeshData& lineMesh, const CompileLinesFlags f
         annotations[i*4 + 3] = {};
     }
 
+    /* A line strip has joins everywhere except the first and last two vertices,
+       a line loop has them everywhere */
+    // TODO have some unified handling, this is awful
+    if(lineMesh.primitive() == MeshPrimitive::LineStrip) {
+        // TODO
+    } else if(lineMesh.primitive() == MeshPrimitive::LineLoop) {
+        for(UnsignedInt i = 0; i != quadCount; ++i) {
+            annotations[i*4 + 0] |= Shaders::LineVertexAnnotation::Join;
+            annotations[i*4 + 1] |= Shaders::LineVertexAnnotation::Join;
+            annotations[i*4 + 2] |= Shaders::LineVertexAnnotation::Join;
+            annotations[i*4 + 3] |= Shaders::LineVertexAnnotation::Join;
+        }
+    }
+
     /* Create an index buffer */
     Containers::Array<UnsignedInt> indices;
     arrayReserve(indices, quadCount*6); // TODO reserve more if it's a single loop / strip; or maybe count the joins above?
+    // TODO no, actually, use the pointDuplicationIndices array allocated above
     for(UnsignedInt i = 0; i != quadCount; ++i) {
         arrayAppend(indices, {
+            // TODO document (and test!) that this is the order that's
+            //  compatible with GL_LINES
+            i*4 + 1,
+            i*4 + 2,
             i*4 + 0,
-            i*4 + 1,
+
+            i*4 + 3,
             i*4 + 2,
-            i*4 + 2,
-            i*4 + 1,
-            i*4 + 3
+            i*4 + 1
         });
 
         /* Add also indices for the bevel in both orientations (one will always
@@ -187,13 +225,15 @@ GL::Mesh compileLines(const Trade::MeshData& lineMesh, const CompileLinesFlags f
             arrayAppend(indices, {
                 i*4 + 2,
                 i*4 + 3,
-                i*4 + 4,
-                i*4 + 4,
+                (i*4 + 4) % (quadCount*4),
+                (i*4 + 4) % (quadCount*4),
                 i*4 + 3,
-                i*4 + 5
+                (i*4 + 5) % (quadCount*4) // TODO workaround for loops, fix better
             });
         }
     }
+
+    // TODO at this point it should spit out a MeshData for easier testing
 
     /* Upload the buffers, bind the line-specific attributes manually */
     GL::Buffer vertices{GL::Buffer::TargetHint::Array, mesh.vertexData()};
@@ -204,15 +244,16 @@ GL::Mesh compileLines(const Trade::MeshData& lineMesh, const CompileLinesFlags f
     out.addVertexBuffer(vertices,
         mesh.attributeOffset(MeshAttributePreviousPosition),
         mesh.attributeStride(MeshAttributePreviousPosition),
-        GL::DynamicAttribute{Shaders::LineGL2D::PreviousPosition{}, mesh.attributeFormat(MeshAttributePreviousPosition)});
+                        // TODO document that both are the same but we have to use 3D to make it possible to trim it down to 2 components for 2D (won't work the other way)
+        GL::DynamicAttribute{Shaders::LineGL3D::PreviousPosition{}, mesh.attributeFormat(MeshAttributePreviousPosition)});
     out.addVertexBuffer(vertices,
         mesh.attributeOffset(MeshAttributeNextPosition),
         mesh.attributeStride(MeshAttributeNextPosition),
-        GL::DynamicAttribute{Shaders::LineGL2D::NextPosition{}, mesh.attributeFormat(MeshAttributeNextPosition)});
+        GL::DynamicAttribute{Shaders::LineGL3D::NextPosition{}, mesh.attributeFormat(MeshAttributeNextPosition)});
     out.addVertexBuffer(std::move(vertices),
         mesh.attributeOffset(MeshAttributeAnnotation),
         mesh.attributeStride(MeshAttributeAnnotation),
-        GL::DynamicAttribute{Shaders::LineGL2D::Annotation{}, mesh.attributeFormat(MeshAttributeAnnotation)});
+        GL::DynamicAttribute{Shaders::LineGL3D::Annotation{}, mesh.attributeFormat(MeshAttributeAnnotation)});
     return out;
 }
 
