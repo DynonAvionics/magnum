@@ -189,6 +189,16 @@ MAGNUM_SHADERS_EXPORT Debug& operator<<(Debug& debug, LineCapStyle value);
  */
 MAGNUM_SHADERS_EXPORT Debug& operator<<(Debug& debug, LineJoinStyle value);
 
+/**
+@brief Per-draw uniform for line shaders
+@m_since_latest
+
+Together with the generic @ref TransformationProjectionUniform2D /
+@ref TransformationProjectionUniform3D contains parameters that are specific to
+each draw call. Material-related properties are expected to be shared among multiple draw calls and thus are provided in a separate
+@ref LineMaterialUniform structure, referenced by @ref materialId.
+@see @ref LineGL::bindDrawBuffer()
+*/
 struct LineDrawUniform {
     /** @brief Construct with default parameters */
     constexpr explicit LineDrawUniform(DefaultInitT = DefaultInit) noexcept: materialId{0}, objectId{0} {}
