@@ -90,9 +90,9 @@ template<UnsignedInt dimensions> typename LineGL<dimensions>::CompileState LineG
     #endif
     Utility::Resource rs{"MagnumShadersGL"_s};
 
-    const GL::Context& context = GL::Context::current();
 
     #ifndef MAGNUM_TARGET_GLES
+    const GL::Context& context = GL::Context::current();
     const GL::Version version = context.supportedVersion({GL::Version::GL320, GL::Version::GL310, GL::Version::GL300, GL::Version::GL210});
     #else
     constexpr GL::Version version = GL::Version::GLES300;
@@ -197,7 +197,11 @@ template<UnsignedInt dimensions> typename LineGL<dimensions>::CompileState LineG
 
     out.submitLink();
 
-    return CompileState{std::move(out), std::move(vert), std::move(frag), version};
+    return CompileState{std::move(out), std::move(vert), std::move(frag)
+        #ifndef MAGNUM_TARGET_GLES
+        , version
+        #endif
+    };
 }
 
 template<UnsignedInt dimensions> LineGL<dimensions>::LineGL(CompileState&& state): LineGL{static_cast<LineGL&&>(std::move(state))} {
@@ -210,9 +214,9 @@ template<UnsignedInt dimensions> LineGL<dimensions>::LineGL(CompileState&& state
     CORRADE_INTERNAL_ASSERT_OUTPUT(checkLink({GL::Shader(state._vert), GL::Shader(state._frag)}));
 
     const GL::Context& context = GL::Context::current();
-    const GL::Version version = state._version;
 
     #ifndef MAGNUM_TARGET_GLES
+    const GL::Version version = state._version;
     if(!context.isExtensionSupported<GL::Extensions::ARB::explicit_uniform_location>(version))
     #endif
     {
@@ -224,7 +228,8 @@ template<UnsignedInt dimensions> LineGL<dimensions>::LineGL(CompileState&& state
             _transformationProjectionMatrixUniform = uniformLocation("transformationProjectionMatrix"_s);
             _widthUniform = uniformLocation("width"_s);
             _smoothnessUniform = uniformLocation("smoothness"_s);
-            _miterLimitUniform = uniformLocation("miterLimit"_s);
+            if(_joinStyle == LineJoinStyle::Miter)
+                _miterLimitUniform = uniformLocation("miterLimit"_s);
             _backgroundColorUniform = uniformLocation("backgroundColor"_s);
             _colorUniform = uniformLocation("color"_s);
             if(_flags & Flag::ObjectId)
@@ -251,13 +256,13 @@ template<UnsignedInt dimensions> LineGL<dimensions>::LineGL(CompileState&& state
         setTransformationProjectionMatrix(MatrixTypeFor<dimensions, Float>{Math::IdentityInit});
         setWidth(1.0f);
         /* Smoothness is zero by default */
-        setMiterLengthLimit(4.0f);
+        if(_joinStyle == LineJoinStyle::Miter)
+            setMiterLengthLimit(4.0f);
         setColor(Magnum::Color4{1.0f});
         /* Object ID is zero by default */
     }
     #endif
 
-    static_cast<void>(version);
     static_cast<void>(context);
 }
 
