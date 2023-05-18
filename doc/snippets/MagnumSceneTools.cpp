@@ -24,6 +24,8 @@
 */
 
 #include <Corrade/Containers/Array.h>
+#include <Corrade/Containers/BitArray.h>
+#include <Corrade/Containers/BitArrayView.h>
 #include <Corrade/Containers/GrowableArray.h>
 #include <Corrade/Containers/Pair.h>
 #include <Corrade/Containers/Triple.h>
@@ -32,8 +34,8 @@
 #include "Magnum/Math/Matrix4.h"
 #include "Magnum/MeshTools/Concatenate.h"
 #include "Magnum/MeshTools/Transform.h"
-#include "Magnum/SceneTools/FlattenTransformationHierarchy.h"
-#include "Magnum/SceneTools/OrderClusterParents.h"
+#include "Magnum/SceneTools/Filter.h"
+#include "Magnum/SceneTools/Hierarchy.h"
 #include "Magnum/Trade/SceneData.h"
 #include "Magnum/Trade/MeshData.h"
 
@@ -43,14 +45,30 @@ using namespace Magnum;
 
 int main() {
 {
-/* [flattenTransformationHierarchy2D-mesh-concatenate] */
+/* [filterFieldEntries-shared-mapping] */
+Trade::SceneData scene = DOXYGEN_ELLIPSIS(Trade::SceneData{{}, 0, nullptr, {}});
+
+Containers::BitArray transformationsToKeep = DOXYGEN_ELLIPSIS({});
+Containers::BitArray lightsToKeep = DOXYGEN_ELLIPSIS({});
+
+/* Mesh and MeshMaterial fields stay unchanged */
+Trade::SceneData filtered = SceneTools::filterFieldEntries(scene, {
+    {Trade::SceneField::Translation, transformationsToKeep},
+    {Trade::SceneField::Rotation, transformationsToKeep},
+    {Trade::SceneField::Light, lightsToKeep}
+});
+/* [filterFieldEntries-shared-mapping] */
+}
+
+{
+/* [absoluteFieldTransformations2D-mesh-concatenate] */
 Trade::SceneData scene = DOXYGEN_ELLIPSIS(Trade::SceneData{{}, 0, nullptr, {}});
 Containers::Array<Trade::MeshData> meshes = DOXYGEN_ELLIPSIS({});
 
 Containers::Array<Containers::Pair<UnsignedInt, Containers::Pair<UnsignedInt, Int>>>
     meshesMaterials = scene.meshesMaterialsAsArray();
 Containers::Array<Matrix3> transformations =
-    SceneTools::flattenTransformationHierarchy2D(scene, Trade::SceneField::Mesh);
+    SceneTools::absoluteFieldTransformations2D(scene, Trade::SceneField::Mesh);
 
 /* Since a mesh can be referenced multiple times, we can't operate in-place */
 Containers::Array<Trade::MeshData> flattenedMeshes;
@@ -60,16 +78,16 @@ for(std::size_t i = 0; i != meshesMaterials.size(); ++i) {
 }
 
 Trade::MeshData concatenated = MeshTools::concatenate(flattenedMeshes);
-/* [flattenTransformationHierarchy2D-mesh-concatenate] */
+/* [absoluteFieldTransformations2D-mesh-concatenate] */
 } {
-/* [flattenTransformationHierarchy3D-mesh-concatenate] */
+/* [absoluteFieldTransformations3D-mesh-concatenate] */
 Trade::SceneData scene = DOXYGEN_ELLIPSIS(Trade::SceneData{{}, 0, nullptr, {}});
 Containers::Array<Trade::MeshData> meshes = DOXYGEN_ELLIPSIS({});
 
 Containers::Array<Containers::Pair<UnsignedInt, Containers::Pair<UnsignedInt, Int>>>
     meshesMaterials = scene.meshesMaterialsAsArray();
 Containers::Array<Matrix4> transformations =
-    SceneTools::flattenTransformationHierarchy3D(scene, Trade::SceneField::Mesh);
+    SceneTools::absoluteFieldTransformations3D(scene, Trade::SceneField::Mesh);
 
 /* Since a mesh can be referenced multiple times, we can't operate in-place */
 Containers::Array<Trade::MeshData> flattenedMeshes;
@@ -79,11 +97,44 @@ for(std::size_t i = 0; i != meshesMaterials.size(); ++i) {
 }
 
 Trade::MeshData concatenated = MeshTools::concatenate(flattenedMeshes);
-/* [flattenTransformationHierarchy3D-mesh-concatenate] */
+/* [absoluteFieldTransformations3D-mesh-concatenate] */
 }
 
 {
-/* [orderClusterParents-transformations] */
+/* [childrenDepthFirst-extract-tree] */
+Trade::SceneData scene = DOXYGEN_ELLIPSIS(Trade::SceneData{{}, 0, nullptr, {}});
+
+Containers::Array<Containers::Pair<UnsignedInt, UnsignedInt>> childrenRanges =
+    SceneTools::childrenDepthFirst(scene);
+
+/* Bit array of objects to keep from the scene */
+UnsignedInt objectToLookFor = DOXYGEN_ELLIPSIS(0);
+Containers::BitArray objectsToKeep{ValueInit, std::size_t(scene.mappingBound())};
+
+/* Look for the object in the list */
+for(const Containers::Pair<UnsignedInt, UnsignedInt>& i: childrenRanges) {
+    if(i.first() != objectToLookFor) continue;
+
+    /* Right after the object appearing in the list is all its (nested)
+       children, mark them in the bit array */
+    for(const Containers::Pair<UnsignedInt, UnsignedInt>& j:
+        childrenRanges.sliceSize(&i, i.second() + 1))
+            objectsToKeep.set(j.first());
+
+    break;
+}
+
+/* Filter the scene to contain just given object and its children, and reparent
+   it to be in scene root */
+Trade::SceneData filtered = SceneTools::filterObjects(scene, objectsToKeep);
+filtered.mutableField<Int>(Trade::SceneField::Parent)[
+    filtered.fieldObjectOffset(Trade::SceneField::Parent, objectToLookFor)
+] = -1;
+/* [childrenDepthFirst-extract-tree] */
+}
+
+{
+/* [parentsBreadthFirst-transformations] */
 Trade::SceneData scene = DOXYGEN_ELLIPSIS(Trade::SceneData{{}, 0, nullptr, {}});
 
 /* Put all transformations into an array indexed by object ID. Objects
@@ -101,12 +152,12 @@ for(const Containers::Pair<UnsignedInt, Matrix4>& transformation:
    function ensures that the parent transformation is already calculated when
    referenced by child nodes. */
 for(const Containers::Pair<UnsignedInt, Int>& parent:
-    SceneTools::orderClusterParents(scene))
+    SceneTools::parentsBreadthFirst(scene))
 {
     transformations[parent.first() + 1] =
         transformations[parent.second() + 1]*
         transformations[parent.first() + 1];
 }
-/* [orderClusterParents-transformations] */
+/* [parentsBreadthFirst-transformations] */
 }
 }

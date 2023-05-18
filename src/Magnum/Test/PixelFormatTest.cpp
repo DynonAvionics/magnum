@@ -26,6 +26,7 @@
 #include <sstream>
 #include <Corrade/TestSuite/Tester.h>
 #include <Corrade/TestSuite/Compare/Numeric.h>
+#include <Corrade/TestSuite/Compare/String.h>
 #include <Corrade/Utility/DebugStl.h>
 #include <Corrade/Utility/Configuration.h>
 
@@ -48,13 +49,23 @@ struct PixelFormatTest: TestSuite::Tester {
     void channelFormatCountInvalid();
     void channelFormatCountDepthStencilImplementationSpecific();
 
+    void isNormalizedIntegralFloatingPoint();
+    void isNormalizedIntegralFloatingPointInvalid();
+    void isNormalizedIntegralFloatingPointDepthStencilImplementationSpecific();
+
     void isSrgb();
     void isSrgbInvalid();
-    void isSrgbImplementationSpecific();
+    void isSrgbDepthStencilImplementationSpecific();
 
     void isDepthOrStencil();
     void isDepthOrStencilInvalid();
     void isDepthOrStencilImplementationSpecific();
+
+    void assemble();
+    void assembleRoundtrip();
+    void assembleInvalidSrgb();
+    void assembleInvalidComponentCount();
+    void assembleDepthStencilImplementationSpecific();
 
     void compressedBlockSize();
     void compressedBlockSizeInvalid();
@@ -86,6 +97,25 @@ struct PixelFormatTest: TestSuite::Tester {
     void compresedConfiguration();
 };
 
+const struct {
+    PixelFormat channelType;
+    bool srgb;
+} AssembleRoundtripData[]{
+    {PixelFormat::R8Unorm, false},
+    {PixelFormat::R8Snorm, false},
+    {PixelFormat::R8Srgb, true},
+    {PixelFormat::R8UI, false},
+    {PixelFormat::R8I, false},
+    {PixelFormat::R16Unorm, false},
+    {PixelFormat::R16Snorm, false},
+    {PixelFormat::R16UI, false},
+    {PixelFormat::R16I, false},
+    {PixelFormat::R32UI, false},
+    {PixelFormat::R32I, false},
+    {PixelFormat::R16F, false},
+    {PixelFormat::R32F, false},
+};
+
 PixelFormatTest::PixelFormatTest() {
     addTests({&PixelFormatTest::mapping,
               &PixelFormatTest::compressedMapping,
@@ -98,13 +128,26 @@ PixelFormatTest::PixelFormatTest() {
               &PixelFormatTest::channelFormatCountInvalid,
               &PixelFormatTest::channelFormatCountDepthStencilImplementationSpecific,
 
+              &PixelFormatTest::isNormalizedIntegralFloatingPoint,
+              &PixelFormatTest::isNormalizedIntegralFloatingPointInvalid,
+              &PixelFormatTest::isNormalizedIntegralFloatingPointDepthStencilImplementationSpecific,
+
               &PixelFormatTest::isSrgb,
               &PixelFormatTest::isSrgbInvalid,
-              &PixelFormatTest::isSrgbImplementationSpecific,
+              &PixelFormatTest::isSrgbDepthStencilImplementationSpecific,
 
               &PixelFormatTest::isDepthOrStencil,
               &PixelFormatTest::isDepthOrStencilInvalid,
               &PixelFormatTest::isDepthOrStencilImplementationSpecific,
+
+              &PixelFormatTest::assemble});
+
+    addRepeatedInstancedTests({&PixelFormatTest::assembleRoundtrip}, 4,
+        Containers::arraySize(AssembleRoundtripData));
+
+    addTests({&PixelFormatTest::assembleInvalidSrgb,
+              &PixelFormatTest::assembleInvalidComponentCount,
+              &PixelFormatTest::assembleDepthStencilImplementationSpecific,
 
               &PixelFormatTest::compressedBlockSize,
               &PixelFormatTest::compressedBlockSizeInvalid,
@@ -159,8 +202,11 @@ void PixelFormatTest::mapping() {
                     CORRADE_COMPARE(Utility::ConfigurationValue<PixelFormat>::toString(PixelFormat::format, {}), #format); \
                     CORRADE_COMPARE(nextHandled, i); \
                     CORRADE_COMPARE(firstUnhandled, 0xffff); \
-                    if(!isPixelFormatDepthOrStencil(PixelFormat::format)) \
+                    if(!isPixelFormatDepthOrStencil(PixelFormat::format)) { \
+                        CORRADE_COMPARE(Int(isPixelFormatIntegral(PixelFormat::format)) + Int(isPixelFormatNormalized(PixelFormat::format)) + Int(isPixelFormatFloatingPoint(PixelFormat::format)), 1); \
                         CORRADE_COMPARE(pixelFormatChannelCount(PixelFormat::format)*pixelFormatSize(pixelFormatChannelFormat(PixelFormat::format)), pixelFormatSize(PixelFormat::format)); \
+                        CORRADE_VERIFY(!isPixelFormatSrgb(PixelFormat::format) || isPixelFormatNormalized(PixelFormat::format)); \
+                    } \
                     ++nextHandled; \
                     continue;
             #include "Magnum/Implementation/pixelFormatMapping.hpp"
@@ -317,10 +363,72 @@ void PixelFormatTest::channelFormatCountDepthStencilImplementationSpecific() {
         "pixelFormatChannelCount(): can't determine channel count of PixelFormat::Depth16Unorm\n");
 }
 
+void PixelFormatTest::isNormalizedIntegralFloatingPoint() {
+    /* Verification that exactly one of the tree returns true is done in
+       mapping() above */
+
+    CORRADE_VERIFY(isPixelFormatNormalized(PixelFormat::RG8Srgb));
+    CORRADE_VERIFY(isPixelFormatNormalized(PixelFormat::RGBA8Snorm));
+    CORRADE_VERIFY(isPixelFormatIntegral(PixelFormat::RG8UI));
+    CORRADE_VERIFY(isPixelFormatIntegral(PixelFormat::RGBA16I));
+    CORRADE_VERIFY(isPixelFormatFloatingPoint(PixelFormat::R32F));
+
+    /* Integer normalized aren't marked as integer */
+    CORRADE_VERIFY(!isPixelFormatIntegral(PixelFormat::RG8Unorm));
+
+    /* Floating-point aren't marked as normalized */
+    CORRADE_VERIFY(!isPixelFormatNormalized(PixelFormat::RG16F));
+
+    /* Normalized aren't marked as floating-point even though they're treated
+       like float values in calculations */
+    CORRADE_VERIFY(!isPixelFormatFloatingPoint(PixelFormat::R16Unorm));
+}
+
+void PixelFormatTest::isNormalizedIntegralFloatingPointInvalid() {
+    CORRADE_SKIP_IF_NO_ASSERT();
+
+    std::ostringstream out;
+    Error redirectError{&out};
+    isPixelFormatNormalized(PixelFormat{});
+    isPixelFormatNormalized(PixelFormat(0xdead));
+    isPixelFormatIntegral(PixelFormat{});
+    isPixelFormatIntegral(PixelFormat(0xdead));
+    isPixelFormatFloatingPoint(PixelFormat{});
+    isPixelFormatFloatingPoint(PixelFormat(0xdead));
+    CORRADE_COMPARE(out.str(),
+        "isPixelFormatNormalized(): invalid format PixelFormat(0x0)\n"
+        "isPixelFormatNormalized(): invalid format PixelFormat(0xdead)\n"
+        "isPixelFormatIntegral(): invalid format PixelFormat(0x0)\n"
+        "isPixelFormatIntegral(): invalid format PixelFormat(0xdead)\n"
+        "isPixelFormatFloatingPoint(): invalid format PixelFormat(0x0)\n"
+        "isPixelFormatFloatingPoint(): invalid format PixelFormat(0xdead)\n");
+}
+
+void PixelFormatTest::isNormalizedIntegralFloatingPointDepthStencilImplementationSpecific() {
+    CORRADE_SKIP_IF_NO_ASSERT();
+
+    std::ostringstream out;
+    Error redirectError{&out};
+    isPixelFormatNormalized(pixelFormatWrap(0xdead));
+    isPixelFormatNormalized(PixelFormat::Depth24UnormStencil8UI);
+    isPixelFormatIntegral(pixelFormatWrap(0xdead));
+    isPixelFormatIntegral(PixelFormat::Stencil8UI);
+    isPixelFormatFloatingPoint(pixelFormatWrap(0xdead));
+    isPixelFormatFloatingPoint(PixelFormat::Depth16UnormStencil8UI);
+    CORRADE_COMPARE_AS(out.str(),
+        "isPixelFormatNormalized(): can't determine type of an implementation-specific format 0xdead\n"
+        "isPixelFormatNormalized(): can't determine type of PixelFormat::Depth24UnormStencil8UI\n"
+        "isPixelFormatIntegral(): can't determine type of an implementation-specific format 0xdead\n"
+        "isPixelFormatIntegral(): can't determine type of PixelFormat::Stencil8UI\n"
+        "isPixelFormatFloatingPoint(): can't determine type of an implementation-specific format 0xdead\n"
+        "isPixelFormatFloatingPoint(): can't determine type of PixelFormat::Depth16UnormStencil8UI\n",
+        TestSuite::Compare::String);
+}
+
 void PixelFormatTest::isSrgb() {
     CORRADE_VERIFY(isPixelFormatSrgb(PixelFormat::RG8Srgb));
+    CORRADE_VERIFY(!isPixelFormatSrgb(PixelFormat::RG8Snorm));
     CORRADE_VERIFY(!isPixelFormatSrgb(PixelFormat::RGB16F));
-    CORRADE_VERIFY(!isPixelFormatSrgb(PixelFormat::Stencil8UI));
 }
 
 void PixelFormatTest::isSrgbInvalid() {
@@ -335,14 +443,16 @@ void PixelFormatTest::isSrgbInvalid() {
         "isPixelFormatSrgb(): invalid format PixelFormat(0xdead)\n");
 }
 
-void PixelFormatTest::isSrgbImplementationSpecific() {
+void PixelFormatTest::isSrgbDepthStencilImplementationSpecific() {
     CORRADE_SKIP_IF_NO_ASSERT();
 
     std::ostringstream out;
     Error redirectError{&out};
     isPixelFormatSrgb(pixelFormatWrap(0xdead));
+    isPixelFormatSrgb(PixelFormat::Depth16Unorm);
     CORRADE_COMPARE(out.str(),
-        "isPixelFormatSrgb(): can't determine colorspace of an implementation-specific format 0xdead\n");
+        "isPixelFormatSrgb(): can't determine colorspace of an implementation-specific format 0xdead\n"
+        "isPixelFormatSrgb(): can't determine colorspace of PixelFormat::Depth16Unorm\n");
 }
 
 void PixelFormatTest::isDepthOrStencil() {
@@ -371,6 +481,76 @@ void PixelFormatTest::isDepthOrStencilImplementationSpecific() {
     isPixelFormatDepthOrStencil(pixelFormatWrap(0xdead));
     CORRADE_COMPARE(out.str(),
         "isPixelFormatDepthOrStencil(): can't determine type of an implementation-specific format 0xdead\n");
+}
+
+void PixelFormatTest::assemble() {
+    /* Changing component count */
+    CORRADE_COMPARE(pixelFormat(PixelFormat::RGB16F, 4, false), PixelFormat::RGBA16F);
+    CORRADE_COMPARE(pixelFormat(PixelFormat::RGBA32UI, 2, false), PixelFormat::RG32UI);
+    CORRADE_COMPARE(pixelFormat(PixelFormat::R8Snorm, 3, false), PixelFormat::RGB8Snorm);
+
+    /* Same as pixelFormatChannelFormat() */
+    CORRADE_COMPARE(pixelFormat(PixelFormat::RGB32F, 1, false), pixelFormatChannelFormat(PixelFormat::RGB32F));
+
+    /* Adding / removing a sRGB property */
+    CORRADE_COMPARE(pixelFormat(PixelFormat::RGB8Unorm, 3, true), PixelFormat::RGB8Srgb);
+    CORRADE_COMPARE(pixelFormat(PixelFormat::RGBA8Srgb, 4, false), PixelFormat::RGBA8Unorm);
+}
+
+void PixelFormatTest::assembleRoundtrip() {
+    auto&& data = AssembleRoundtripData[testCaseInstanceId()];
+
+    std::ostringstream out;
+    {
+        Debug d{&out, Debug::Flag::NoNewlineAtTheEnd};
+        d << data.channelType;
+        if(data.srgb) d << Debug::nospace << ", srgb";
+    }
+    setTestCaseDescription(out.str());
+
+    PixelFormat result = pixelFormat(data.channelType, testCaseRepeatId() + 1, data.srgb);
+    CORRADE_COMPARE(pixelFormat(result, testCaseRepeatId() + 1, data.srgb), result);
+    CORRADE_COMPARE(pixelFormatChannelFormat(result), data.channelType);
+    CORRADE_COMPARE(pixelFormatChannelCount(result), testCaseRepeatId() + 1);
+    CORRADE_COMPARE(isPixelFormatSrgb(result), data.srgb);
+}
+
+void PixelFormatTest::assembleInvalidSrgb() {
+    CORRADE_SKIP_IF_NO_ASSERT();
+
+    std::ostringstream out;
+    Error redirectError{&out};
+    pixelFormat(PixelFormat::R8Snorm, 1, true);
+    pixelFormat(PixelFormat::RGB16Unorm, 4, true);
+    pixelFormat(PixelFormat::RGBA16F, 3, true);
+    CORRADE_COMPARE(out.str(),
+        "pixelFormat(): PixelFormat::R8Snorm can't be made sRGB\n"
+        "pixelFormat(): PixelFormat::RGB16Unorm can't be made sRGB\n"
+        "pixelFormat(): PixelFormat::RGBA16F can't be made sRGB\n");
+}
+
+void PixelFormatTest::assembleInvalidComponentCount() {
+    CORRADE_SKIP_IF_NO_ASSERT();
+
+    std::ostringstream out;
+    Error redirectError{&out};
+    pixelFormat(PixelFormat::RGB8Unorm, 0, false);
+    pixelFormat(PixelFormat::RGB8Unorm, 5, false);
+    CORRADE_COMPARE(out.str(),
+        "pixelFormat(): invalid component count 0\n"
+        "pixelFormat(): invalid component count 5\n");
+}
+
+void PixelFormatTest::assembleDepthStencilImplementationSpecific() {
+    CORRADE_SKIP_IF_NO_ASSERT();
+
+    std::ostringstream out;
+    Error redirectError{&out};
+    pixelFormat(pixelFormatWrap(0xdead), 1, true);
+    pixelFormat(PixelFormat::Depth32F, 1, true);
+    CORRADE_COMPARE(out.str(),
+        "pixelFormat(): can't assemble a format out of an implementation-specific format 0xdead\n"
+        "pixelFormat(): can't assemble a format out of PixelFormat::Depth32F\n");
 }
 
 void PixelFormatTest::compressedBlockSize() {

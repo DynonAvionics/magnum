@@ -157,6 +157,11 @@ plugin; @ref isOpened() works as usual.
 While the @ref meshAttributeName(), @ref meshAttributeForName(),
 @ref sceneFieldName() and @ref sceneFieldForName() APIs can be called without a
 file opened, they return an empty string or an invalid attribute in that case.
+
+Besides delegating the flags, the @ref AnySceneImporter itself recognizes
+@ref ImporterFlag::Verbose, printing info about the concrete plugin being used
+when the flag is enabled. @ref ImporterFlag::Quiet is recognized as well and
+causes all warnings to be suppressed.
 */
 class MAGNUM_ANYSCENEIMPORTER_EXPORT AnySceneImporter: public AbstractImporter {
     public:
@@ -178,6 +183,8 @@ class MAGNUM_ANYSCENEIMPORTER_EXPORT AnySceneImporter: public AbstractImporter {
         MAGNUM_ANYSCENEIMPORTER_LOCAL Containers::String doAnimationName(UnsignedInt id) override;
         MAGNUM_ANYSCENEIMPORTER_LOCAL Int doAnimationForName(Containers::StringView name) override;
         MAGNUM_ANYSCENEIMPORTER_LOCAL Containers::Optional<AnimationData> doAnimation(UnsignedInt id) override;
+        MAGNUM_ANYSCENEIMPORTER_LOCAL AnimationTrackTarget doAnimationTrackTargetForName(Containers::StringView name) override;
+        MAGNUM_ANYSCENEIMPORTER_LOCAL Containers::String doAnimationTrackTargetName(AnimationTrackTarget name) override;
 
         MAGNUM_ANYSCENEIMPORTER_LOCAL Int doDefaultScene() const override;
 
@@ -189,7 +196,7 @@ class MAGNUM_ANYSCENEIMPORTER_EXPORT AnySceneImporter: public AbstractImporter {
         MAGNUM_ANYSCENEIMPORTER_LOCAL Containers::String doObjectName(UnsignedLong id) override;
         MAGNUM_ANYSCENEIMPORTER_LOCAL Containers::Optional<SceneData> doScene(UnsignedInt id) override;
         MAGNUM_ANYSCENEIMPORTER_LOCAL SceneField doSceneFieldForName(Containers::StringView name) override;
-        MAGNUM_ANYSCENEIMPORTER_LOCAL Containers::String doSceneFieldName(Magnum::UnsignedInt name) override;
+        MAGNUM_ANYSCENEIMPORTER_LOCAL Containers::String doSceneFieldName(SceneField name) override;
 
         MAGNUM_ANYSCENEIMPORTER_LOCAL UnsignedInt doLightCount() const override;
         MAGNUM_ANYSCENEIMPORTER_LOCAL Int doLightForName(Containers::StringView name) override;
@@ -233,7 +240,7 @@ class MAGNUM_ANYSCENEIMPORTER_EXPORT AnySceneImporter: public AbstractImporter {
         MAGNUM_ANYSCENEIMPORTER_LOCAL Containers::Optional<MeshData> doMesh(UnsignedInt id, UnsignedInt level) override;
 
         MAGNUM_ANYSCENEIMPORTER_LOCAL MeshAttribute doMeshAttributeForName(Containers::StringView name) override;
-        MAGNUM_ANYSCENEIMPORTER_LOCAL Containers::String doMeshAttributeName(UnsignedShort id) override;
+        MAGNUM_ANYSCENEIMPORTER_LOCAL Containers::String doMeshAttributeName(MeshAttribute id) override;
 
         #ifdef MAGNUM_BUILD_DEPRECATED
         MAGNUM_ANYSCENEIMPORTER_LOCAL UnsignedInt doMesh2DCount() const override;

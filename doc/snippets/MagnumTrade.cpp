@@ -415,34 +415,67 @@ for(UnsignedInt i = 0; i != data.trackCount(); ++i) {
 }
 
 {
-/* [ImageData-construction] */
-Containers::Array<char> data;
-Trade::ImageData2D image{PixelFormat::RGB8Unorm, {32, 32}, std::move(data)};
-/* [ImageData-construction] */
+/* [ImageData-populating] */
+Containers::Array<char> uncompressedData = DOXYGEN_ELLIPSIS({});
+Trade::ImageData2D uncompressed{PixelFormat::RGB8Unorm,
+    {32, 32}, std::move(uncompressedData)};
+
+Containers::Array<char> compressedData = DOXYGEN_ELLIPSIS({});
+Trade::ImageData2D compressed{CompressedPixelFormat::Bc1RGBUnorm,
+    {32, 32}, std::move(compressedData)};
+/* [ImageData-populating] */
 }
 
 {
-/* [ImageData-construction-compressed] */
-Containers::Array<char> data;
-Trade::ImageData2D image{CompressedPixelFormat::Bc1RGBUnorm,
-    {32, 32}, std::move(data)};
-/* [ImageData-construction-compressed] */
+/* [ImageData-populating-non-owned] */
+Color3ub uncompressedData[]{DOXYGEN_ELLIPSIS({})};
+Trade::ImageData2D uncompressed{PixelFormat::RGB8Unorm,
+    {32, 32}, Trade::DataFlag::Mutable, uncompressedData};
+
+Containers::ArrayView<const char> compressedData = DOXYGEN_ELLIPSIS({});
+Trade::ImageData2D compressed{CompressedPixelFormat::Bc1RGBUnorm,
+    {32, 32}, Trade::DataFlags{}, compressedData};
+/* [ImageData-populating-non-owned] */
+}
+
+{
+/* [ImageData-populating-padding] */
+PixelFormat format = DOXYGEN_ELLIPSIS({});
+Vector2i size = DOXYGEN_ELLIPSIS({});
+std::size_t rowStride = 4*((size.x()*pixelFormatSize(format) + 3)/4);
+Containers::Array<char> data{ValueInit, std::size_t(size.y()*rowStride)};
+DOXYGEN_ELLIPSIS()
+
+Trade::ImageData2D image{format, size, std::move(data)};
+/* [ImageData-populating-padding] */
+}
+
+{
+/* [ImageData-populating-alignment] */
+PixelFormat format = DOXYGEN_ELLIPSIS({});
+Vector2i size = DOXYGEN_ELLIPSIS({});
+std::size_t rowLength = size.x()*pixelFormatSize(format);
+Containers::Array<char> data{ValueInit, std::size_t(size.y()*rowLength)};
+DOXYGEN_ELLIPSIS()
+
+Trade::ImageData2D image{
+    PixelStorage{}.setAlignment(rowLength % 4 == 0 ? 4 : 1),
+    format, size, std::move(data)};
+/* [ImageData-populating-alignment] */
 }
 
 #ifdef MAGNUM_TARGET_GL
 {
 /* [ImageData-usage] */
-Containers::Pointer<Trade::AbstractImporter> importer;
-Containers::Optional<Trade::ImageData2D> image = importer->image2D(0);
-if(!image) Fatal{} << "Oopsie!";
+Trade::ImageData2D image = DOXYGEN_ELLIPSIS(Trade::ImageData2D{PixelFormat{}, {}, nullptr});
 
 GL::Texture2D texture;
 DOXYGEN_ELLIPSIS()
-texture.setStorage(1, GL::textureFormat(image->format()), image->size());
-if(!image->isCompressed())
-    texture.setSubImage(0, {}, *image);
+texture.setStorage(1, GL::textureFormat(image.format()), image.size());
+if(!image.isCompressed())
+    texture.setSubImage(0, {}, image);
 else
-    texture.setCompressedSubImage(0, {}, *image);
+    texture.setCompressedSubImage(0, {}, image);
 /* [ImageData-usage] */
 }
 #endif
@@ -463,7 +496,7 @@ for(auto&& row: data.mutablePixels<Color3ub>())
 
 {
 /* [LightData-populating-range] */
-Trade::LightData data{Trade::LightData::Type::Point,
+Trade::LightData data{Trade::LightType::Point,
     0xfff3d6_srgbf, 1.0f,
     15.0f};
 /* [LightData-populating-range] */
@@ -471,7 +504,7 @@ Trade::LightData data{Trade::LightData::Type::Point,
 
 {
 /* [LightData-populating-attenuation] */
-Trade::LightData data{Trade::LightData::Type::Spot,
+Trade::LightData data{Trade::LightType::Spot,
     0xf3d6ff_srgbf, 10.0f,
     {0.01f, 0.5f, 2.0f},
     25.0_degf, 55.0_degf};
@@ -480,7 +513,7 @@ Trade::LightData data{Trade::LightData::Type::Spot,
 
 {
 /* [LightData-populating-none] */
-Trade::LightData data{Trade::LightData::Type::Directional,
+Trade::LightData data{Trade::LightType::Directional,
     0xd6fff3_srgbf, 0.25f};
 /* [LightData-populating-none] */
 }
@@ -725,24 +758,20 @@ Trade::MeshAttributeData data{Trade::MeshAttribute::Position, positions};
 }
 
 {
+UnsignedInt vertexCount{};
 /* [MeshAttributeData-usage-offset-only] */
 struct Vertex {
     Vector3 position;
     Vector4 color;
 };
 
-/* Layout defined statically, 15 vertices in total */
-constexpr Trade::MeshAttributeData positions{Trade::MeshAttribute::Position,
-    VertexFormat::Vector3, offsetof(Vertex, position), 15, sizeof(Vertex)};
-constexpr Trade::MeshAttributeData colors{Trade::MeshAttribute::Color,
-    VertexFormat::Vector4, offsetof(Vertex, color), 15, sizeof(Vertex)};
-
-/* Actual data populated later */
-Containers::Array<char> vertexData{15*sizeof(Vertex)};
-DOXYGEN_ELLIPSIS()
-Trade::MeshData{MeshPrimitive::Triangles, std::move(vertexData),
-    {positions, colors}};
+Trade::MeshAttributeData positions{Trade::MeshAttribute::Position,
+    VertexFormat::Vector3, offsetof(Vertex, position), vertexCount, sizeof(Vertex)};
+Trade::MeshAttributeData colors{Trade::MeshAttribute::Color,
+    VertexFormat::Vector4, offsetof(Vertex, color), vertexCount, sizeof(Vertex)};
 /* [MeshAttributeData-usage-offset-only] */
+static_cast<void>(positions);
+static_cast<void>(colors);
 }
 
 #ifdef MAGNUM_TARGET_VK
@@ -862,18 +891,18 @@ struct Vertex {
 Containers::Array<char> indexData{indexCount*sizeof(UnsignedShort)};
 Containers::Array<char> vertexData{vertexCount*sizeof(Vertex)};
 DOXYGEN_ELLIPSIS()
-auto vertices = Containers::arrayCast<const Vertex>(vertexData);
-auto indices = Containers::arrayCast<const UnsignedShort>(indexData);
+Containers::StridedArrayView1D<const Vertex> vertices =
+    Containers::arrayCast<const Vertex>(vertexData);
+Containers::ArrayView<const UnsignedShort> indices =
+    Containers::arrayCast<const UnsignedShort>(indexData);
 
 Trade::MeshData data{MeshPrimitive::Triangles,
     std::move(indexData), Trade::MeshIndexData{indices},
     std::move(vertexData), {
         Trade::MeshAttributeData{Trade::MeshAttribute::Position,
-            Containers::StridedArrayView1D<const Vector3>{vertices,
-                &vertices[0].position, vertexCount, sizeof(Vertex)}},
+            vertices.slice(&Vertex::position)},
         Trade::MeshAttributeData{Trade::MeshAttribute::Color,
-            Containers::StridedArrayView1D<const Vector4>{vertices,
-                &vertices[0].color, vertexCount, sizeof(Vertex)}}
+            vertices.slice(&Vertex::color)}
     }};
 /* [MeshData-populating] */
 }
@@ -884,27 +913,49 @@ struct Vertex {
     Vector4 color;
 };
 /* [MeshData-populating-non-owned] */
-const UnsignedShort indices[] {
-    0, 1, 2,
-    2, 1, 3,
-    3, 4, 5,
-    5, 4, 6
+const UnsignedShort indices[]{
+    DOXYGEN_ELLIPSIS(0)
 };
-Vertex vertices[7];
+Vertex vertices[]{
+    DOXYGEN_ELLIPSIS({})
+};
 
 Trade::MeshData data{MeshPrimitive::Triangles,
     Trade::DataFlags{}, indices, Trade::MeshIndexData{indices},
     Trade::DataFlag::Mutable, vertices, {
         Trade::MeshAttributeData{Trade::MeshAttribute::Position,
-            Containers::StridedArrayView1D<const Vector3>{
-                Containers::arrayView(vertices), &vertices[0].position,
-                Containers::arraySize(vertices), sizeof(Vertex)}},
+            Containers::stridedArrayView(vertices).slice(&Vertex::position)},
         Trade::MeshAttributeData{Trade::MeshAttribute::Color,
-            Containers::StridedArrayView1D<const Vector4>{
-                Containers::arrayView(vertices), &vertices[0].color,
-                Containers::arraySize(vertices), sizeof(Vertex)}}
+            Containers::stridedArrayView(vertices).slice(&Vertex::color)}
     }};
 /* [MeshData-populating-non-owned] */
+}
+
+{
+UnsignedInt vertexCount{};
+/* [MeshData-populating-offset-only] */
+struct Vertex {
+    Vector3 position;
+    Vector4 color;
+};
+
+/* Layout known in advance, except for vertex count */
+constexpr Trade::MeshAttributeData attributes[]{
+    Trade::MeshAttributeData{Trade::MeshAttribute::Position,
+        VertexFormat::Vector3, offsetof(Vertex, position), 0, sizeof(Vertex)},
+    Trade::MeshAttributeData{Trade::MeshAttribute::Color,
+        VertexFormat::Vector4, offsetof(Vertex, color), 15, sizeof(Vertex)}
+};
+
+/* Actual data populated later */
+Containers::Array<char> vertexData{vertexCount*sizeof(Vertex)};
+DOXYGEN_ELLIPSIS()
+
+/* Using the statically defined attribute layout together with explicitly
+   passed vertex count */
+Trade::MeshData mesh{MeshPrimitive::Triangles, std::move(vertexData),
+    Trade::meshAttributeDataNonOwningArray(attributes), vertexCount};
+/* [MeshData-populating-offset-only] */
 }
 
 {
@@ -1027,27 +1078,23 @@ Trade::SceneFieldData field{Trade::SceneField::Transformation,
 }
 
 {
+std::size_t objectCount = 120;
 /* [SceneFieldData-usage-offset-only] */
 struct Node {
-    UnsignedInt object;
+    UnsignedInt mapping;
     Int parent;
-    Matrix4 transform;
+    Matrix4 transformation;
 };
 
-/* Layout defined statically, 120 objects in total */
-constexpr Trade::SceneFieldData parents{Trade::SceneField::Parent, 120,
-    Trade::SceneMappingType::UnsignedInt, offsetof(Node, object), sizeof(Node),
+Trade::SceneFieldData parents{Trade::SceneField::Parent, objectCount,
+    Trade::SceneMappingType::UnsignedInt, offsetof(Node, mapping), sizeof(Node),
     Trade::SceneFieldType::Int, offsetof(Node, parent), sizeof(Node)};
-constexpr Trade::SceneFieldData transforms{Trade::SceneField::Transformation, 120,
-    Trade::SceneMappingType::UnsignedInt, offsetof(Node, object), sizeof(Node),
-    Trade::SceneFieldType::Matrix4x4, offsetof(Node, transform), sizeof(Node)};
-
-/* Actual data populated later */
-Containers::Array<char> data{120*sizeof(Node)};
-DOXYGEN_ELLIPSIS()
-Trade::SceneData{Trade::SceneMappingType::UnsignedInt, 120, std::move(data),
-    {parents, transforms}};
+Trade::SceneFieldData transformations{Trade::SceneField::Transformation, objectCount,
+    Trade::SceneMappingType::UnsignedInt, offsetof(Node, mapping), sizeof(Node),
+    Trade::SceneFieldType::Matrix4x4, offsetof(Node, transformation), sizeof(Node)};
 /* [SceneFieldData-usage-offset-only] */
+static_cast<void>(parents);
+static_cast<void>(transformations);
 }
 
 {
@@ -1164,7 +1211,7 @@ for(std::size_t i = 0; i != transformationMapping.size(); ++i) {
 const std::size_t nodeCount{}, meshAssignmentCount{};
 /* [SceneData-populating] */
 struct Common {
-    UnsignedShort object;
+    UnsignedShort mapping;
     Short parent;
     Matrix4 transformation;
 };
@@ -1186,15 +1233,69 @@ Trade::SceneData scene{
     Trade::SceneMappingType::UnsignedShort, nodeCount,
     std::move(data), {
         Trade::SceneFieldData{Trade::SceneField::Parent,
-            common.slice(&Common::object), common.slice(&Common::parent)},
+            common.slice(&Common::mapping),
+            common.slice(&Common::parent)},
         Trade::SceneFieldData{Trade::SceneField::Transformation,
-            common.slice(&Common::object), common.slice(&Common::transformation)},
+            common.slice(&Common::mapping), common.slice(&Common::transformation)},
         Trade::SceneFieldData{Trade::SceneField::Mesh,
-            meshMaterialMapping, meshes},
+            meshMaterialMapping,
+            meshes},
         Trade::SceneFieldData{Trade::SceneField::MeshMaterial,
-            meshMaterialMapping, meshMaterials}
+            meshMaterialMapping,
+            meshMaterials}
     }};
 /* [SceneData-populating] */
+}
+
+{
+constexpr std::size_t objectCount = 1;
+/* [SceneData-populating-non-owned] */
+constexpr struct Data {
+    UnsignedShort mapping;
+    Short parent;
+    Matrix4 transformation;
+} data[objectCount]{
+    DOXYGEN_ELLIPSIS({})
+};
+
+Trade::SceneData scene{
+    Trade::SceneMappingType::UnsignedShort, objectCount,
+    Trade::DataFlag::Global, data, {
+        Trade::SceneFieldData{Trade::SceneField::Parent,
+            Containers::stridedArrayView(data).slice(&Data::mapping),
+            Containers::stridedArrayView(data).slice(&Data::parent)},
+        DOXYGEN_ELLIPSIS()
+    }};
+/* [SceneData-populating-non-owned] */
+}
+
+{
+constexpr std::size_t objectCount = 1;
+/* [SceneData-populating-offset-only] */
+struct Data {
+    UnsignedInt mapping;
+    Int parent;
+    Matrix4 transformation;
+};
+
+/* Layout defined statically */
+constexpr Trade::SceneFieldData fields[]{
+    Trade::SceneFieldData{Trade::SceneField::Parent, objectCount,
+        Trade::SceneMappingType::UnsignedInt, offsetof(Data, mapping), sizeof(Data),
+        Trade::SceneFieldType::Int, offsetof(Data, parent), sizeof(Data)},
+    Trade::SceneFieldData{Trade::SceneField::Transformation, objectCount,
+        Trade::SceneMappingType::UnsignedInt, offsetof(Data, mapping), sizeof(Data),
+        Trade::SceneFieldType::Matrix4x4, offsetof(Data, transformation), sizeof(Data)}
+};
+
+/* Actual data populated later */
+Containers::Array<char> data{objectCount*sizeof(Data)};
+DOXYGEN_ELLIPSIS()
+
+/* Using the statically defined field layout */
+Trade::SceneData scene{Trade::SceneMappingType::UnsignedInt, objectCount,
+    std::move(data), Trade::sceneFieldDataNonOwningArray(fields)};
+/* [SceneData-populating-offset-only] */
 }
 
 {

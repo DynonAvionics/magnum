@@ -29,7 +29,7 @@
 #include <Corrade/Utility/Algorithms.h>
 
 #include "Magnum/Math/Functions.h"
-#include "Magnum/MeshTools/Reference.h"
+#include "Magnum/MeshTools/Copy.h"
 #include "Magnum/Trade/MeshData.h"
 
 namespace Magnum { namespace MeshTools {
@@ -346,7 +346,7 @@ Trade::MeshData interleave(Trade::MeshData&& mesh, const Containers::ArrayView<c
             /* Asserting here even though data() has another assert since that
                one would be too confusing in this context */
             CORRADE_ASSERT(!extra[i].isOffsetOnly(),
-                "MeshTools::interleave(): extra attribute" << i << "is offset-only, which is not supported",
+                "MeshTools::interleave(): extra attribute" << i << "is offset-only",
                 (Trade::MeshData{MeshPrimitive::Triangles, 0}));
 
             /* Copy the attribute in, if it is non-empty, otherwise keep the

@@ -168,6 +168,10 @@ struct AbstractSceneConverterTest: TestSuite::Tester {
     void addAnimationFailed();
     void addAnimationNotImplemented();
 
+    void setAnimationTrackTargetName();
+    void setAnimationTrackTargetNameNotImplemented();
+    void setAnimationTrackTargetNameNotCustom();
+
     void addLight();
     void addLightFailed();
     void addLightNotImplemented();
@@ -717,6 +721,10 @@ AbstractSceneConverterTest::AbstractSceneConverterTest() {
               &AbstractSceneConverterTest::addAnimationFailed,
               &AbstractSceneConverterTest::addAnimationNotImplemented,
 
+              &AbstractSceneConverterTest::setAnimationTrackTargetName,
+              &AbstractSceneConverterTest::setAnimationTrackTargetNameNotImplemented,
+              &AbstractSceneConverterTest::setAnimationTrackTargetNameNotCustom,
+
               &AbstractSceneConverterTest::addLight,
               &AbstractSceneConverterTest::addLightFailed,
               &AbstractSceneConverterTest::addLightNotImplemented,
@@ -1080,7 +1088,9 @@ void AbstractSceneConverterTest::thingNotSupported() {
     converter.setDefaultScene(0);
 
     converter.add(AnimationData{nullptr, nullptr});
-    converter.add(LightData{LightData::Type::Point, {}, 0.0f});
+    converter.setAnimationTrackTargetName({}, {});
+
+    converter.add(LightData{LightType::Point, {}, 0.0f});
     converter.add(CameraData{CameraType::Orthographic3D, {}, 0.0f, 1.0f});
     converter.add(SkinData2D{nullptr, nullptr});
     converter.add(SkinData3D{nullptr, nullptr});
@@ -1107,7 +1117,7 @@ void AbstractSceneConverterTest::thingNotSupported() {
     converter.add({image3D, image3D});
     converter.add({compressedImage3D, compressedImage3D});
 
-    CORRADE_COMPARE(out.str(),
+    CORRADE_COMPARE_AS(out.str(),
         "Trade::AbstractSceneConverter::convert(): mesh conversion not supported\n"
         "Trade::AbstractSceneConverter::convertInPlace(): mesh conversion not supported\n"
         "Trade::AbstractSceneConverter::convertToData(): mesh conversion not supported\n"
@@ -1123,6 +1133,8 @@ void AbstractSceneConverterTest::thingNotSupported() {
         "Trade::AbstractSceneConverter::setDefaultScene(): feature not supported\n"
 
         "Trade::AbstractSceneConverter::add(): animation conversion not supported\n"
+        "Trade::AbstractSceneConverter::setAnimationTrackTargetName(): feature not supported\n"
+
         "Trade::AbstractSceneConverter::add(): light conversion not supported\n"
         "Trade::AbstractSceneConverter::add(): camera conversion not supported\n"
         "Trade::AbstractSceneConverter::add(): 2D skin conversion not supported\n"
@@ -1148,7 +1160,8 @@ void AbstractSceneConverterTest::thingNotSupported() {
         "Trade::AbstractSceneConverter::add(): 3D image conversion not supported\n"
         "Trade::AbstractSceneConverter::add(): compressed 3D image conversion not supported\n"
         "Trade::AbstractSceneConverter::add(): multi-level 3D image conversion not supported\n"
-        "Trade::AbstractSceneConverter::add(): multi-level compressed 3D image conversion not supported\n");
+        "Trade::AbstractSceneConverter::add(): multi-level compressed 3D image conversion not supported\n",
+        TestSuite::Compare::String);
 }
 
 void AbstractSceneConverterTest::thingLevelsNotSupported() {
@@ -2582,9 +2595,10 @@ void AbstractSceneConverterTest::thingNoBegin() {
 
     converter.animationCount();
     converter.add(AnimationData{nullptr, nullptr});
+    converter.setAnimationTrackTargetName({}, {});
 
     converter.lightCount();
-    converter.add(LightData{LightData::Type::Point, {}, 0.0f});
+    converter.add(LightData{LightType::Point, {}, 0.0f});
 
     converter.cameraCount();
     converter.add(CameraData{CameraType::Orthographic3D, {}, 0.0f, 1.0f});
@@ -2637,6 +2651,7 @@ void AbstractSceneConverterTest::thingNoBegin() {
 
         "Trade::AbstractSceneConverter::animationCount(): no conversion in progress\n"
         "Trade::AbstractSceneConverter::add(): no conversion in progress\n"
+        "Trade::AbstractSceneConverter::setAnimationTrackTargetName(): no conversion in progress\n"
 
         "Trade::AbstractSceneConverter::lightCount(): no conversion in progress\n"
         "Trade::AbstractSceneConverter::add(): no conversion in progress\n"
@@ -2823,8 +2838,8 @@ void AbstractSceneConverterTest::setSceneFieldName() {
 
         bool doBegin() override { return true; }
 
-        void doSetSceneFieldName(UnsignedInt field, Containers::StringView name) override {
-            CORRADE_COMPARE(field, 1337);
+        void doSetSceneFieldName(SceneField field, Containers::StringView name) override {
+            CORRADE_COMPARE(field, sceneFieldCustom(1337));
             CORRADE_COMPARE(name, "hello!");
             setSceneFieldNameCalled = true;
         }
@@ -3080,6 +3095,67 @@ void AbstractSceneConverterTest::addAnimationNotImplemented() {
     CORRADE_COMPARE(out.str(), "Trade::AbstractSceneConverter::add(): animation conversion advertised but not implemented\n");
 }
 
+void AbstractSceneConverterTest::setAnimationTrackTargetName() {
+    struct: AbstractSceneConverter {
+        SceneConverterFeatures doFeatures() const override {
+            return SceneConverterFeature::ConvertMultiple|
+                   SceneConverterFeature::AddAnimations;
+        }
+
+        bool doBegin() override { return true; }
+
+        void doSetAnimationTrackTargetName(AnimationTrackTarget target, Containers::StringView name) override {
+            CORRADE_COMPARE(target, animationTrackTargetCustom(1337));
+            CORRADE_COMPARE(name, "hello!");
+            setAnimationTrackTargetNameCalled = true;
+        }
+
+        bool setAnimationTrackTargetNameCalled = false;
+    } converter;
+
+    CORRADE_VERIFY(true); /* capture correct function name */
+
+    CORRADE_VERIFY(converter.begin());
+    converter.setAnimationTrackTargetName(animationTrackTargetCustom(1337), "hello!");
+    CORRADE_VERIFY(converter.setAnimationTrackTargetNameCalled);
+}
+
+void AbstractSceneConverterTest::setAnimationTrackTargetNameNotImplemented() {
+    struct: AbstractSceneConverter {
+        SceneConverterFeatures doFeatures() const override {
+            return SceneConverterFeature::ConvertMultiple|
+                   SceneConverterFeature::AddAnimations;
+        }
+
+        bool doBegin() override { return true; }
+    } converter;
+
+    /* This should work, there's no need for a plugin to implement this */
+    CORRADE_VERIFY(converter.begin());
+    converter.setAnimationTrackTargetName(animationTrackTargetCustom(1337), "hello!");
+    CORRADE_VERIFY(true);
+}
+
+void AbstractSceneConverterTest::setAnimationTrackTargetNameNotCustom() {
+    CORRADE_SKIP_IF_NO_ASSERT();
+
+    struct: AbstractSceneConverter {
+        SceneConverterFeatures doFeatures() const override {
+            return SceneConverterFeature::ConvertMultiple|
+                   SceneConverterFeature::AddAnimations;
+        }
+
+        bool doBegin() override { return true; }
+    } converter;
+
+    CORRADE_VERIFY(converter.begin());
+
+    std::ostringstream out;
+    Error redirectError{&out};
+    converter.setAnimationTrackTargetName(AnimationTrackTarget::Scaling2D, "hello!");
+    CORRADE_COMPARE(out.str(), "Trade::AbstractSceneConverter::setAnimationTrackTargetName(): Trade::AnimationTrackTarget::Scaling2D is not custom\n");
+}
+
 void AbstractSceneConverterTest::addLight() {
     struct: AbstractSceneConverter {
         SceneConverterFeatures doFeatures() const override {
@@ -3106,10 +3182,10 @@ void AbstractSceneConverterTest::addLight() {
 
     CORRADE_VERIFY(converter.begin());
     CORRADE_COMPARE(converter.lightCount(), 0);
-    CORRADE_COMPARE(converter.add(LightData{LightData::Type::Point, {}, 0.0f, reinterpret_cast<const void*>(0xdeadbeef)}, "hello"), 0);
+    CORRADE_COMPARE(converter.add(LightData{LightType::Point, {}, 0.0f, reinterpret_cast<const void*>(0xdeadbeef)}, "hello"), 0);
     CORRADE_VERIFY(converter.addCalled);
     CORRADE_COMPARE(converter.lightCount(), 1);
-    CORRADE_COMPARE(converter.add(LightData{LightData::Type::Point, {}, 0.0f, reinterpret_cast<const void*>(0xdeadbeef)}, "hello"), 1);
+    CORRADE_COMPARE(converter.add(LightData{LightType::Point, {}, 0.0f, reinterpret_cast<const void*>(0xdeadbeef)}, "hello"), 1);
     CORRADE_COMPARE(converter.lightCount(), 2);
 }
 
@@ -3134,7 +3210,7 @@ void AbstractSceneConverterTest::addLightFailed() {
     {
         std::ostringstream out;
         Error redirectError{&out};
-        CORRADE_VERIFY(!converter.add(LightData{LightData::Type::Point, {}, 0.0f}));
+        CORRADE_VERIFY(!converter.add(LightData{LightType::Point, {}, 0.0f}));
         CORRADE_COMPARE(out.str(), "");
     }
 
@@ -3159,7 +3235,7 @@ void AbstractSceneConverterTest::addLightNotImplemented() {
 
     std::ostringstream out;
     Error redirectError{&out};
-    converter.add(LightData{LightData::Type::Point, {}, 0.0f});
+    converter.add(LightData{LightType::Point, {}, 0.0f});
     CORRADE_COMPARE(out.str(), "Trade::AbstractSceneConverter::add(): light conversion advertised but not implemented\n");
 }
 
@@ -4122,8 +4198,8 @@ void AbstractSceneConverterTest::setMeshAttributeName() {
 
         bool doBegin() override { return true; }
 
-        void doSetMeshAttributeName(UnsignedShort field, Containers::StringView name) override {
-            CORRADE_COMPARE(field, 1337);
+        void doSetMeshAttributeName(MeshAttribute field, Containers::StringView name) override {
+            CORRADE_COMPARE(field, meshAttributeCustom(1337));
             CORRADE_COMPARE(name, "hello!");
             setMeshAttributeNameCalled = true;
         }
@@ -5926,7 +6002,7 @@ void AbstractSceneConverterTest::addImporterContents() {
             return Utility::format("Light {}", id);
         }
         Containers::Optional<LightData> doLight(UnsignedInt id) override {
-            return LightData{LightData::Type::Point, {}, {}, reinterpret_cast<const void*>(0x11600000 + id)};
+            return LightData{LightType::Point, {}, {}, reinterpret_cast<const void*>(0x11600000 + id)};
         }
 
         UnsignedInt doCameraCount() const override {
@@ -6215,9 +6291,9 @@ void AbstractSceneConverterTest::addImporterContentsCustomSceneFields() {
                 }};
             return SceneData{SceneMappingType::UnsignedInt, 0, nullptr, {}};
         }
-        Containers::String doSceneFieldName(UnsignedInt name) override {
-            if(name == 34977) return "OffsetSmall";
-            if(name == 5266) return "ValueData";
+        Containers::String doSceneFieldName(SceneField name) override {
+            if(name == sceneFieldCustom(34977)) return "offsetSmall";
+            if(name == sceneFieldCustom(5266)) return "valueData";
             CORRADE_FAIL("This should not be reached");
             CORRADE_INTERNAL_ASSERT_UNREACHABLE();
         }
@@ -6236,8 +6312,8 @@ void AbstractSceneConverterTest::addImporterContentsCustomSceneFields() {
             Debug{} << "Adding scene";
             return true;
         }
-        void doSetSceneFieldName(UnsignedInt field, Containers::StringView name) override {
-            Debug{} << "Setting field" << field << "name to" << name;
+        void doSetSceneFieldName(SceneField field, Containers::StringView name) override {
+            Debug{} << "Setting field" << sceneFieldCustom(field) << "name to" << name;
         }
     } converter;
 
@@ -6250,11 +6326,11 @@ void AbstractSceneConverterTest::addImporterContentsCustomSceneFields() {
     CORRADE_COMPARE(out.str(),
         "Adding scene\n"
         /** @todo cache the names to avoid querying repeatedly */
-        "Setting field 34977 name to OffsetSmall\n"
-        "Setting field 5266 name to ValueData\n"
+        "Setting field 34977 name to offsetSmall\n"
+        "Setting field 5266 name to valueData\n"
         "Adding scene\n"
-        "Setting field 34977 name to OffsetSmall\n"
-        "Setting field 5266 name to ValueData\n"
+        "Setting field 34977 name to offsetSmall\n"
+        "Setting field 5266 name to valueData\n"
         "Adding scene\n");
 }
 
@@ -6280,9 +6356,9 @@ void AbstractSceneConverterTest::addImporterContentsCustomMeshAttributes() {
                 }};
             return MeshData{MeshPrimitive::Points, 0};
         }
-        Containers::String doMeshAttributeName(UnsignedShort name) override {
-            if(name == 31977) return "OffsetSmall";
-            if(name == 5266) return "ValueData";
+        Containers::String doMeshAttributeName(MeshAttribute name) override {
+            if(name == meshAttributeCustom(31977)) return "offsetSmall";
+            if(name == meshAttributeCustom(5266)) return "valueData";
             CORRADE_FAIL("This should not be reached");
             CORRADE_INTERNAL_ASSERT_UNREACHABLE();
         }
@@ -6302,8 +6378,8 @@ void AbstractSceneConverterTest::addImporterContentsCustomMeshAttributes() {
             Debug{} << "Adding mesh levels";
             return true;
         }
-        void doSetMeshAttributeName(UnsignedShort attribute, Containers::StringView name) override {
-            Debug{} << "Setting attribute" << attribute << "name to" << name;
+        void doSetMeshAttributeName(MeshAttribute attribute, Containers::StringView name) override {
+            Debug{} << "Setting attribute" << meshAttributeCustom(attribute) << "name to" << name;
         }
     } converter;
 
@@ -6316,10 +6392,10 @@ void AbstractSceneConverterTest::addImporterContentsCustomMeshAttributes() {
     CORRADE_COMPARE(out.str(),
         "Adding mesh levels\n"
         /** @todo cache the names to avoid querying repeatedly */
-        "Setting attribute 31977 name to OffsetSmall\n"
-        "Setting attribute 5266 name to ValueData\n"
-        "Setting attribute 31977 name to OffsetSmall\n"
-        "Setting attribute 5266 name to ValueData\n"
+        "Setting attribute 31977 name to offsetSmall\n"
+        "Setting attribute 5266 name to valueData\n"
+        "Setting attribute 31977 name to offsetSmall\n"
+        "Setting attribute 5266 name to valueData\n"
         "Adding mesh levels\n");
 }
 
@@ -6355,7 +6431,7 @@ void AbstractSceneConverterTest::addImporterContentsImportFail() {
         }
         Containers::Optional<LightData> doLight(UnsignedInt id) override {
             if(id == 2) return {};
-            return LightData{LightData::Type::Point, {}, {}};
+            return LightData{LightType::Point, {}, {}};
         }
 
         UnsignedInt doCameraCount() const override {
@@ -6597,7 +6673,7 @@ void AbstractSceneConverterTest::addImporterContentsConversionFail() {
             return 4;
         }
         Containers::Optional<LightData> doLight(UnsignedInt) override {
-            return LightData{LightData::Type::Point, {}, {}};
+            return LightData{LightType::Point, {}, {}};
         }
 
         UnsignedInt doCameraCount() const override {
@@ -7160,7 +7236,7 @@ void AbstractSceneConverterTest::addSupportedImporterContents() {
 
         UnsignedInt doLightCount() const override { return 4; }
         Containers::Optional<LightData> doLight(UnsignedInt) override {
-            return LightData{LightData::Type::Point, {}, {}};
+            return LightData{LightType::Point, {}, {}};
         }
 
         UnsignedInt doCameraCount() const override { return 5; }

@@ -290,6 +290,243 @@ UnsignedInt pixelFormatChannelCount(const PixelFormat format) {
     CORRADE_ASSERT_UNREACHABLE("pixelFormatChannelCount(): invalid format" << format, {});
 }
 
+bool isPixelFormatNormalized(const PixelFormat format) {
+    CORRADE_ASSERT(!isPixelFormatImplementationSpecific(format),
+        "isPixelFormatNormalized(): can't determine type of an implementation-specific format" << reinterpret_cast<void*>(pixelFormatUnwrap(format)), {});
+
+    #ifdef CORRADE_TARGET_GCC
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic error "-Wswitch"
+    #endif
+    switch(format) {
+        case PixelFormat::R8Unorm:
+        case PixelFormat::RG8Unorm:
+        case PixelFormat::RGB8Unorm:
+        case PixelFormat::RGBA8Unorm:
+        case PixelFormat::R8Snorm:
+        case PixelFormat::RG8Snorm:
+        case PixelFormat::RGB8Snorm:
+        case PixelFormat::RGBA8Snorm:
+        case PixelFormat::R8Srgb:
+        case PixelFormat::RG8Srgb:
+        case PixelFormat::RGB8Srgb:
+        case PixelFormat::RGBA8Srgb:
+        case PixelFormat::R16Unorm:
+        case PixelFormat::RG16Unorm:
+        case PixelFormat::RGB16Unorm:
+        case PixelFormat::RGBA16Unorm:
+        case PixelFormat::R16Snorm:
+        case PixelFormat::RG16Snorm:
+        case PixelFormat::RGB16Snorm:
+        case PixelFormat::RGBA16Snorm:
+            return true;
+        case PixelFormat::R8UI:
+        case PixelFormat::RG8UI:
+        case PixelFormat::RGB8UI:
+        case PixelFormat::RGBA8UI:
+        case PixelFormat::R8I:
+        case PixelFormat::RG8I:
+        case PixelFormat::RGB8I:
+        case PixelFormat::RGBA8I:
+        case PixelFormat::R16UI:
+        case PixelFormat::RG16UI:
+        case PixelFormat::RGB16UI:
+        case PixelFormat::RGBA16UI:
+        case PixelFormat::R16I:
+        case PixelFormat::RG16I:
+        case PixelFormat::RGB16I:
+        case PixelFormat::RGBA16I:
+        case PixelFormat::R32UI:
+        case PixelFormat::RG32UI:
+        case PixelFormat::RGB32UI:
+        case PixelFormat::RGBA32UI:
+        case PixelFormat::R32I:
+        case PixelFormat::RG32I:
+        case PixelFormat::RGB32I:
+        case PixelFormat::RGBA32I:
+        case PixelFormat::R16F:
+        case PixelFormat::RG16F:
+        case PixelFormat::RGB16F:
+        case PixelFormat::RGBA16F:
+        case PixelFormat::R32F:
+        case PixelFormat::RG32F:
+        case PixelFormat::RGB32F:
+        case PixelFormat::RGBA32F:
+            return false;
+        case PixelFormat::Depth16Unorm:
+        case PixelFormat::Depth24Unorm:
+        case PixelFormat::Depth32F:
+        case PixelFormat::Stencil8UI:
+        case PixelFormat::Depth16UnormStencil8UI:
+        case PixelFormat::Depth24UnormStencil8UI:
+        case PixelFormat::Depth32FStencil8UI:
+            CORRADE_ASSERT_UNREACHABLE("isPixelFormatNormalized(): can't determine type of" << format, {});
+    }
+    #ifdef CORRADE_TARGET_GCC
+    #pragma GCC diagnostic pop
+    #endif
+
+    CORRADE_ASSERT_UNREACHABLE("isPixelFormatNormalized(): invalid format" << format, {});
+}
+
+bool isPixelFormatIntegral(const PixelFormat format) {
+    CORRADE_ASSERT(!isPixelFormatImplementationSpecific(format),
+        "isPixelFormatIntegral(): can't determine type of an implementation-specific format" << reinterpret_cast<void*>(pixelFormatUnwrap(format)), {});
+
+    #ifdef CORRADE_TARGET_GCC
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic error "-Wswitch"
+    #endif
+    switch(format) {
+        case PixelFormat::R8UI:
+        case PixelFormat::RG8UI:
+        case PixelFormat::RGB8UI:
+        case PixelFormat::RGBA8UI:
+        case PixelFormat::R8I:
+        case PixelFormat::RG8I:
+        case PixelFormat::RGB8I:
+        case PixelFormat::RGBA8I:
+        case PixelFormat::R16UI:
+        case PixelFormat::RG16UI:
+        case PixelFormat::RGB16UI:
+        case PixelFormat::RGBA16UI:
+        case PixelFormat::R16I:
+        case PixelFormat::RG16I:
+        case PixelFormat::RGB16I:
+        case PixelFormat::RGBA16I:
+        case PixelFormat::R32UI:
+        case PixelFormat::RG32UI:
+        case PixelFormat::RGB32UI:
+        case PixelFormat::RGBA32UI:
+        case PixelFormat::R32I:
+        case PixelFormat::RG32I:
+        case PixelFormat::RGB32I:
+        case PixelFormat::RGBA32I:
+            return true;
+        case PixelFormat::R8Unorm:
+        case PixelFormat::RG8Unorm:
+        case PixelFormat::RGB8Unorm:
+        case PixelFormat::RGBA8Unorm:
+        case PixelFormat::R8Snorm:
+        case PixelFormat::RG8Snorm:
+        case PixelFormat::RGB8Snorm:
+        case PixelFormat::RGBA8Snorm:
+        case PixelFormat::R8Srgb:
+        case PixelFormat::RG8Srgb:
+        case PixelFormat::RGB8Srgb:
+        case PixelFormat::RGBA8Srgb:
+        case PixelFormat::R16Unorm:
+        case PixelFormat::RG16Unorm:
+        case PixelFormat::RGB16Unorm:
+        case PixelFormat::RGBA16Unorm:
+        case PixelFormat::R16Snorm:
+        case PixelFormat::RG16Snorm:
+        case PixelFormat::RGB16Snorm:
+        case PixelFormat::RGBA16Snorm:
+        case PixelFormat::R16F:
+        case PixelFormat::RG16F:
+        case PixelFormat::RGB16F:
+        case PixelFormat::RGBA16F:
+        case PixelFormat::R32F:
+        case PixelFormat::RG32F:
+        case PixelFormat::RGB32F:
+        case PixelFormat::RGBA32F:
+            return false;
+        case PixelFormat::Depth16Unorm:
+        case PixelFormat::Depth24Unorm:
+        case PixelFormat::Depth32F:
+        case PixelFormat::Stencil8UI:
+        case PixelFormat::Depth16UnormStencil8UI:
+        case PixelFormat::Depth24UnormStencil8UI:
+        case PixelFormat::Depth32FStencil8UI:
+            CORRADE_ASSERT_UNREACHABLE("isPixelFormatIntegral(): can't determine type of" << format, {});
+    }
+    #ifdef CORRADE_TARGET_GCC
+    #pragma GCC diagnostic pop
+    #endif
+
+    CORRADE_ASSERT_UNREACHABLE("isPixelFormatIntegral(): invalid format" << format, {});
+}
+
+bool isPixelFormatFloatingPoint(const PixelFormat format) {
+    CORRADE_ASSERT(!isPixelFormatImplementationSpecific(format),
+        "isPixelFormatFloatingPoint(): can't determine type of an implementation-specific format" << reinterpret_cast<void*>(pixelFormatUnwrap(format)), {});
+
+    #ifdef CORRADE_TARGET_GCC
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic error "-Wswitch"
+    #endif
+    switch(format) {
+        case PixelFormat::R16F:
+        case PixelFormat::RG16F:
+        case PixelFormat::RGB16F:
+        case PixelFormat::RGBA16F:
+        case PixelFormat::R32F:
+        case PixelFormat::RG32F:
+        case PixelFormat::RGB32F:
+        case PixelFormat::RGBA32F:
+            return true;
+        case PixelFormat::R8Unorm:
+        case PixelFormat::RG8Unorm:
+        case PixelFormat::RGB8Unorm:
+        case PixelFormat::RGBA8Unorm:
+        case PixelFormat::R8Snorm:
+        case PixelFormat::RG8Snorm:
+        case PixelFormat::RGB8Snorm:
+        case PixelFormat::RGBA8Snorm:
+        case PixelFormat::R8Srgb:
+        case PixelFormat::RG8Srgb:
+        case PixelFormat::RGB8Srgb:
+        case PixelFormat::RGBA8Srgb:
+        case PixelFormat::R8UI:
+        case PixelFormat::RG8UI:
+        case PixelFormat::RGB8UI:
+        case PixelFormat::RGBA8UI:
+        case PixelFormat::R8I:
+        case PixelFormat::RG8I:
+        case PixelFormat::RGB8I:
+        case PixelFormat::RGBA8I:
+        case PixelFormat::R16Unorm:
+        case PixelFormat::RG16Unorm:
+        case PixelFormat::RGB16Unorm:
+        case PixelFormat::RGBA16Unorm:
+        case PixelFormat::R16Snorm:
+        case PixelFormat::RG16Snorm:
+        case PixelFormat::RGB16Snorm:
+        case PixelFormat::RGBA16Snorm:
+        case PixelFormat::R16UI:
+        case PixelFormat::RG16UI:
+        case PixelFormat::RGB16UI:
+        case PixelFormat::RGBA16UI:
+        case PixelFormat::R16I:
+        case PixelFormat::RG16I:
+        case PixelFormat::RGB16I:
+        case PixelFormat::RGBA16I:
+        case PixelFormat::R32UI:
+        case PixelFormat::RG32UI:
+        case PixelFormat::RGB32UI:
+        case PixelFormat::RGBA32UI:
+        case PixelFormat::R32I:
+        case PixelFormat::RG32I:
+        case PixelFormat::RGB32I:
+        case PixelFormat::RGBA32I:
+            return false;
+        case PixelFormat::Depth16Unorm:
+        case PixelFormat::Depth24Unorm:
+        case PixelFormat::Depth32F:
+        case PixelFormat::Stencil8UI:
+        case PixelFormat::Depth16UnormStencil8UI:
+        case PixelFormat::Depth24UnormStencil8UI:
+        case PixelFormat::Depth32FStencil8UI:
+            CORRADE_ASSERT_UNREACHABLE("isPixelFormatFloatingPoint(): can't determine type of" << format, {});
+    }
+    #ifdef CORRADE_TARGET_GCC
+    #pragma GCC diagnostic pop
+    #endif
+
+    CORRADE_ASSERT_UNREACHABLE("isPixelFormatFloatingPoint(): invalid format" << format, {});
+}
+
 bool isPixelFormatSrgb(const PixelFormat format) {
     CORRADE_ASSERT(!isPixelFormatImplementationSpecific(format),
         "isPixelFormatSrgb(): can't determine colorspace of an implementation-specific format" << reinterpret_cast<void*>(pixelFormatUnwrap(format)), {});
@@ -352,6 +589,7 @@ bool isPixelFormatSrgb(const PixelFormat format) {
         case PixelFormat::RG32F:
         case PixelFormat::RGB32F:
         case PixelFormat::RGBA32F:
+            return false;
         case PixelFormat::Depth16Unorm:
         case PixelFormat::Depth24Unorm:
         case PixelFormat::Depth32F:
@@ -359,7 +597,7 @@ bool isPixelFormatSrgb(const PixelFormat format) {
         case PixelFormat::Depth16UnormStencil8UI:
         case PixelFormat::Depth24UnormStencil8UI:
         case PixelFormat::Depth32FStencil8UI:
-            return false;
+            CORRADE_ASSERT_UNREACHABLE("isPixelFormatSrgb(): can't determine colorspace of" << format, {});
     }
     #ifdef CORRADE_TARGET_GCC
     #pragma GCC diagnostic pop
@@ -444,6 +682,49 @@ bool isPixelFormatDepthOrStencil(const PixelFormat format) {
     #endif
 
     CORRADE_ASSERT_UNREACHABLE("isPixelFormatDepthOrStencil(): invalid format" << format, {});
+}
+
+PixelFormat pixelFormat(const PixelFormat format, const UnsignedInt channelCount, const bool srgb) {
+    CORRADE_ASSERT(!isPixelFormatImplementationSpecific(format),
+        "pixelFormat(): can't assemble a format out of an implementation-specific format" << reinterpret_cast<void*>(pixelFormatUnwrap(format)), {});
+    CORRADE_ASSERT(!isPixelFormatDepthOrStencil(format),
+        "pixelFormat(): can't assemble a format out of" << format, {});
+
+    PixelFormat channelFormat = pixelFormatChannelFormat(format);
+
+    /* First turn the format into a sRGB one or remove the sRGB property, if
+       requested. The [RGBA]8Srgb formats follow [RGBA]8Unorm in the same order
+       so it's just constant addition / subtraction for all four variants. */
+    if(srgb && channelFormat != PixelFormat::R8Srgb) {
+        CORRADE_ASSERT(channelFormat == PixelFormat::R8Unorm,
+            "pixelFormat():" << format << "can't be made sRGB", {});
+        channelFormat = PixelFormat(UnsignedInt(channelFormat) - UnsignedInt(PixelFormat::R8Unorm) + UnsignedInt(PixelFormat::R8Srgb));
+    } else if(!srgb && channelFormat == PixelFormat::R8Srgb) {
+        channelFormat = PixelFormat(UnsignedInt(channelFormat) - UnsignedInt(PixelFormat::R8Srgb) + UnsignedInt(PixelFormat::R8Unorm));
+    }
+
+    CORRADE_ASSERT(channelCount >= 1 && channelCount <= 4,
+        "pixelFormat(): invalid component count" << channelCount, {});
+
+    /* The two-, three- and four-channel variants follow each other, so it's
+       just addition again. There may be packed formats in the future, so
+       whitelist for the known set of single-channel formats. */
+    if(channelFormat == PixelFormat::R8Unorm ||
+       channelFormat == PixelFormat::R8Snorm ||
+       channelFormat == PixelFormat::R8Srgb ||
+       channelFormat == PixelFormat::R8UI ||
+       channelFormat == PixelFormat::R8I ||
+       channelFormat == PixelFormat::R16Unorm ||
+       channelFormat == PixelFormat::R16Snorm ||
+       channelFormat == PixelFormat::R16UI ||
+       channelFormat == PixelFormat::R16I ||
+       channelFormat == PixelFormat::R32UI ||
+       channelFormat == PixelFormat::R32I ||
+       channelFormat == PixelFormat::R16F ||
+       channelFormat == PixelFormat::R32F)
+        return PixelFormat(UnsignedInt(channelFormat) + channelCount - 1);
+
+    CORRADE_INTERNAL_ASSERT_UNREACHABLE(); /* LCOV_EXCL_LINE */
 }
 
 namespace {

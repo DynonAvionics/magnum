@@ -224,8 +224,8 @@ void SceneConverterImplementationTest::infoScenesObjects() {
             if(id == 8) return "Not in any scene";
             return "";
         }
-        Containers::String doSceneFieldName(UnsignedInt name) override {
-            if(name == 1337) return "DirectionVector";
+        Containers::String doSceneFieldName(Trade::SceneField name) override {
+            if(name == Trade::sceneFieldCustom(1337)) return "directionVector";
             return "";
         }
         Containers::Optional<Trade::SceneData> doScene(UnsignedInt id) override {
@@ -340,8 +340,8 @@ void SceneConverterImplementationTest::infoAnimations() {
             CORRADE_INTERNAL_ASSERT_UNREACHABLE();
         }
 
-        Containers::String doAnimationTrackTargetName(UnsignedShort name) override {
-            if(name == 333)
+        Containers::String doAnimationTrackTargetName(Trade::AnimationTrackTarget name) override {
+            if(name == Trade::animationTrackTargetCustom(333))
                 return "visibility";
             return {};
         }
@@ -464,7 +464,7 @@ void SceneConverterImplementationTest::infoLights() {
         Containers::Optional<Trade::LightData> doLight(UnsignedInt id) override {
             /* First a blue spot light */
             if(id == 0) return Trade::LightData{
-                Trade::LightData::Type::Spot,
+                Trade::LightType::Spot,
                 0x3457ff_rgbf,
                 15.0f,
                 {1.2f, 0.3f, 0.04f},
@@ -475,7 +475,7 @@ void SceneConverterImplementationTest::infoLights() {
 
             /* Second a yellow directional light with infinite range */
             if(id == 1) return Trade::LightData{
-                Trade::LightData::Type::Directional,
+                Trade::LightType::Directional,
                 0xff5734_rgbf,
                 5.0f
             };
@@ -646,11 +646,11 @@ void SceneConverterImplementationTest::infoMeshes() {
         Containers::String doMeshName(UnsignedInt id) override {
             return id == 1 ? "LODs? No, meshets." : "";
         }
-        Containers::String doMeshAttributeName(UnsignedShort name) override {
-            if(name == 25) return "vertices";
-            if(name == 26) return "triangles";
+        Containers::String doMeshAttributeName(Trade::MeshAttribute name) override {
+            if(name == Trade::meshAttributeCustom(25)) return "vertices";
+            if(name == Trade::meshAttributeCustom(26)) return "triangles";
             /* 37 (triangleCount) deliberately not named */
-            if(name == 116) return "vertexCount";
+            if(name == Trade::meshAttributeCustom(116)) return "vertexCount";
 
             return "";
         }
@@ -755,8 +755,9 @@ void SceneConverterImplementationTest::infoMeshesBounds() {
                 }};
         }
 
-        Containers::String doMeshAttributeName(UnsignedShort name) override {
-            if(name == 25) return "NormalButCustomSoNoBoundsPrinted";
+        Containers::String doMeshAttributeName(Trade::MeshAttribute name) override {
+            if(name == Trade::meshAttributeCustom(25))
+                return "normalButCustomSoNoBoundsPrinted";
             return "";
         }
 
@@ -998,17 +999,17 @@ void SceneConverterImplementationTest::infoReferenceCount() {
         }
         Containers::Optional<Trade::LightData> doLight(UnsignedInt id) override {
             if(id == 0) return Trade::LightData{
-                Trade::LightData::Type::Directional,
+                Trade::LightType::Directional,
                 0x57ff34_rgbf,
                 5.0f
             };
             if(id == 1) return Trade::LightData{
-                Trade::LightData::Type::Ambient,
+                Trade::LightType::Ambient,
                 0xff5734_rgbf,
                 0.1f
             };
             if(id == 2) return Trade::LightData{
-                Trade::LightData::Type::Directional,
+                Trade::LightType::Directional,
                 0x3457ff_rgbf,
                 1.0f
             };

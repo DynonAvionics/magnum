@@ -25,34 +25,44 @@
     DEALINGS IN THE SOFTWARE.
 */
 
-#include <unordered_map>
+#include <map>
 #include <Corrade/Containers/ArrayTuple.h>
 #include <Corrade/Containers/GrowableArray.h>
 #include <Corrade/Containers/Optional.h>
-#include <Corrade/Containers/Pair.h>
+#include <Corrade/Containers/StridedBitArrayView.h>
+#include <Corrade/Containers/StringView.h>
+#include <Corrade/Containers/Triple.h>
 #include <Corrade/Utility/Algorithms.h>
 
 #include "Magnum/Math/Functions.h"
 #include "Magnum/Math/PackingBatch.h"
 #include "Magnum/Trade/SceneData.h"
+#include "Magnum/Trade/Implementation/checkSharedSceneFieldMapping.h"
 
 namespace Magnum { namespace SceneTools { namespace Implementation {
 
-/* These two are needed because there (obviously) isn't any overload of
-   castInto with the same input and output type */
-template<class T, class U> void copyOrCastInto(const Containers::StridedArrayView1D<const T>& src, const Containers::StridedArrayView1D<U>& dst) {
-    Math::castInto(Containers::arrayCast<2, const T>(src), Containers::arrayCast<2, U>(dst));
-}
-template<class T> void copyOrCastInto(const Containers::StridedArrayView1D<const T>& src, const Containers::StridedArrayView1D<T>& dst) {
-    Utility::copy(src, dst);
-}
+/* The combineFields() is currently transitively used also by Trade for
+   (deprecated) backwards compatibility in SceneData, in particular by
+   convertToSingleFunctionObjects(). Making Trade depend on SceneTools in a
+   deprecated build would be a nasty complication, so the functions are inlined
+   in a header that gets included in both */
+/** @todo move everything to Combine.cpp and anonymous namespace once that
+    compatibility is dropped */
 
-template<class T> void combineCopyMappings(const Containers::ArrayView<const Trade::SceneFieldData> fields, const Containers::ArrayView<const Containers::StridedArrayView2D<char>> itemViews, const Containers::ArrayView<const Containers::Pair<UnsignedInt, UnsignedInt>> itemViewMappings) {
+union CombineItemView {
+    explicit CombineItemView() {}
+
+    Containers::StridedArrayView2D<char> types;
+    Containers::MutableStridedBitArrayView2D bits;
+    Containers::MutableStringView strings;
+};
+
+template<class T> void combineCopyMappings(const Containers::ArrayView<const Trade::SceneFieldData> fields, const Containers::ArrayView<const CombineItemView> itemViews, const Containers::ArrayView<const Containers::Triple<UnsignedInt, UnsignedInt, UnsignedInt>> itemViewMappings) {
     std::size_t latestMapping = 0;
     for(std::size_t i = 0; i != fields.size(); ++i) {
-        /* If there are no aliased object mappings, itemViewMappings should be
+        /* If there are no shared object mappings, itemViewMappings should be
            monotonically increasing. If it's not, it means the mapping is
-           shared with something earlier and it got already copied -- skip. */
+           shared with something earlier which got already copied -- skip. */
         const std::size_t mapping = itemViewMappings[i].first();
         if(i && mapping <= latestMapping) continue;
         latestMapping = mapping;
@@ -61,103 +71,235 @@ template<class T> void combineCopyMappings(const Containers::ArrayView<const Tra
            covers reserved fields but also fields of zero size. */
         if(!fields[i].mappingData()) continue;
 
+        /* The additional cast to 2D has to be there in order to ensure the
+           second dimension is contiguous which Math::castInto() requires */
+        /** @todo this is an error-prone mess, fix better */
         const Containers::StridedArrayView1D<const void> src = fields[i].mappingData();
-        const Containers::StridedArrayView1D<T> dst = Containers::arrayCast<1, T>(itemViews[mapping]);
+        const Containers::StridedArrayView2D<T> dst = Containers::arrayCast<2, T>(Containers::arrayCast<1, T>(itemViews[mapping].types));
         if(fields[i].mappingType() == Trade::SceneMappingType::UnsignedByte)
-            copyOrCastInto(Containers::arrayCast<const UnsignedByte>(src), dst);
+            Math::castInto(Containers::arrayCast<2, const UnsignedByte>(Containers::arrayCast<const UnsignedByte>(src)), dst);
         else if(fields[i].mappingType() == Trade::SceneMappingType::UnsignedShort)
-            copyOrCastInto(Containers::arrayCast<const UnsignedShort>(src), dst);
+            Math::castInto(Containers::arrayCast<2, const UnsignedShort>(Containers::arrayCast<const UnsignedShort>(src)), dst);
         else if(fields[i].mappingType() == Trade::SceneMappingType::UnsignedInt)
-            copyOrCastInto(Containers::arrayCast<const UnsignedInt>(src), dst);
+            Math::castInto(Containers::arrayCast<2, const UnsignedInt>(Containers::arrayCast<const UnsignedInt>(src)), dst);
         else if(fields[i].mappingType() == Trade::SceneMappingType::UnsignedLong)
-            copyOrCastInto(Containers::arrayCast<const UnsignedLong>(src), dst);
+            Math::castInto(Containers::arrayCast<2, const UnsignedLong>(Containers::arrayCast<const UnsignedLong>(src)), dst);
         else CORRADE_INTERNAL_ASSERT_UNREACHABLE(); /* LCOV_EXCL_LINE */
     }
 }
 
-/* Combine fields of varying mapping type together into a SceneData of a single
-   given mappingType. The fields are expected to point to existing
-   mapping/field memory, which will be then copied to the resulting scene. If
-   you supply a field with null mapping or field data, the mapping or field
-   data will not get copied, only a placeholder for copying the data later will
-   be allocated. If you however need to have placeholder mapping data shared
-   among multiple fields you have to allocate them upfront. Offset-only fields
-   are not allowed.
+/* Offsets have the total string size as the last item. If it's null-terminated
+   the size is included in the offset, so no special handling needed. */
+template<class T> std::size_t stringOffsetFieldSize(const Containers::StridedArrayView1D<const void>& field) {
+    return Containers::arrayCast<const T>(field).back();
+}
+/* Ranges have the total string size as the max "end" of all offset+size
+   pairs. Again, the null terminator is included in the size so no special
+   handling needed. */
+template<class T> std::size_t stringRangeFieldSize(const Containers::StridedArrayView1D<const void>& field) {
+    std::size_t max = 0;
+    for(const Containers::Pair<T, T> i: Containers::arrayCast<const Containers::Pair<T, T>>(field))
+        max = Math::max(std::size_t(i.first() + i.second()), max);
+    return max;
+}
+/* Null-terminated ranges have the size implicitly calculated using strlen,
+   returning + 1 as it needs to include the last null terminator as well. */
+template<class T> std::size_t stringRangeNullTerminatedFieldSize(const char* string, const Containers::StridedArrayView1D<const void>& field) {
+    std::size_t max = 0;
+    for(const T i: Containers::arrayCast<const T>(field))
+        max = i + Math::max(std::strlen(string + i), max);
+    return max + 1;
+}
 
-   The resulting fields are always tightly packed (not interleaved).
+inline Trade::SceneData combineFields(const Trade::SceneMappingType mappingType, const UnsignedLong mappingBound, const Containers::ArrayView<const Trade::SceneFieldData> fields) {
+    #ifndef CORRADE_NO_ASSERT
+    /* Offset-only fields are not allowed as there's no data to refer them to.
+       This has to be checked before shared scene field mapping, otherwise it'd
+       assert there first, leading to confusion. */
+    for(std::size_t i = 0; i != fields.size(); ++i) {
+        CORRADE_ASSERT(!(fields[i].flags() & Trade::SceneFieldFlag::OffsetOnly),
+            "SceneTools::combineFields(): field" << i << "is offset-only", (Trade::SceneData{Trade::SceneMappingType::UnsignedInt, 0, nullptr, {}}));
+    }
+    #endif
 
-   If multiple fields share the same object mapping views, those are preserved,
-   however they have to have the exact same length. Sharing object mappings
-   with different lengths will assert. */
-/** @todo when published, add an initializer_list overload and turn all
-    internal asserts into (tested!) message asserts */
-inline Trade::SceneData combine(const Trade::SceneMappingType mappingType, const UnsignedLong mappingBound, const Containers::ArrayView<const Trade::SceneFieldData> fields) {
+    /* Find fields that have to share the mapping views */
+    const Trade::Implementation::SharedSceneFieldIds sharedSceneFieldIds = Trade::Implementation::findSharedSceneFields(fields);
+
+    /* Check that they actually share the same object mapping, i.e. the same
+       begin, size and stride. As offset-only fields are disallowed, the data
+       pointer can be whatever, just needs to be large enough. */
+    #ifndef CORRADE_NO_ASSERT
+    if(!checkSharedSceneFieldMapping("SceneTools::combineFields():", sharedSceneFieldIds, {nullptr, ~std::size_t{}}, fields))
+        return Trade::SceneData{Trade::SceneMappingType::UnsignedInt, 0, nullptr, {}};
+    #endif
+
+    Containers::Array<Containers::ArrayTuple::Item> items;
+    Containers::Array<Containers::Triple<UnsignedInt, UnsignedInt, UnsignedInt>> itemViewMappings{NoInit, fields.size()};
+
+    /* The item views are referenced from ArrayTuple::Item. It's either of the
+       three views in the union --- from the group of (up to) 3 views per
+       field, first is for the mapping (unless shared with another view) and is
+       always `types`, second for the data (either `types` or `bits`) and third
+       for the string data (`strings`, if the field is a string). In most cases
+       they array won't be fully used but we need to avoid accidental
+       reallocation so the array is made with an upper bound on size. */
+    /** @todo once never-reallocating allocators are present, use them instead
+        of the manual offset */
+    Containers::Array<CombineItemView> itemViews{fields.size()*3};
+    std::size_t itemViewOffset = 0;
+
     const std::size_t mappingTypeSize = sceneMappingTypeSize(mappingType);
     const std::size_t mappingTypeAlignment = sceneMappingTypeAlignment(mappingType);
 
+    /* If any share group has a placeholder view (which thanks to the above
+       check implies that all present fields in that group), add a mapping view
+       for it -- it'll get picked up below */
+    Containers::Optional<UnsignedInt> sharedTrsMapping;
+    if(sharedSceneFieldIds.trs[0] != ~UnsignedInt{} && !fields[sharedSceneFieldIds.trs[0]].mappingData().data()) {
+        sharedTrsMapping = itemViewOffset;
+        arrayAppend(items, InPlaceInit,
+            NoInit,
+            fields[sharedSceneFieldIds.trs[0]].size(),
+            mappingTypeSize,
+            mappingTypeAlignment,
+            itemViews[itemViewOffset].types);
+        ++itemViewOffset;
+    }
+    Containers::Optional<UnsignedInt> sharedMeshMaterialMapping;
+    if(sharedSceneFieldIds.meshMaterial[0] != ~UnsignedInt{} && !fields[sharedSceneFieldIds.meshMaterial[0]].mappingData().data()) {
+        sharedMeshMaterialMapping = itemViewOffset;
+        arrayAppend(items, InPlaceInit,
+            NoInit,
+            fields[sharedSceneFieldIds.meshMaterial[0]].size(),
+            mappingTypeSize,
+            mappingTypeAlignment,
+            itemViews[itemViewOffset].types);
+        ++itemViewOffset;
+    }
+
+    /* Track unique mapping views (pointer, size, stride) so fields that shared
+       a mapping before stay shared after as well. A map<tuple> is used because
+       it has conveniently implemented ordering, an unordered_map couldn't be
+       used without manually implementing a std::tuple hash because STL DOES
+       NOT HAVE IT, UGH. */
+    std::map<std::tuple<const void*, std::size_t, std::ptrdiff_t>, UnsignedInt> uniqueMappings;
+
     /* Go through all fields and collect ArrayTuple allocations for these */
-    std::unordered_map<const void*, UnsignedInt> uniqueMappings;
-    Containers::Array<Containers::ArrayTuple::Item> items;
-    Containers::Array<Containers::Pair<UnsignedInt, UnsignedInt>> itemViewMappings{NoInit, fields.size()};
-
-    /* The item views are referenced from ArrayTuple::Item, not using a
-       growable array in order to avoid an accidental reallocation */
-    /** @todo once never-reallocating allocators are present, use them instead
-        of the manual offset */
-    Containers::Array<Containers::StridedArrayView2D<char>> itemViews{fields.size()*2};
-    std::size_t itemViewOffset = 0;
-
     for(std::size_t i = 0; i != fields.size(); ++i) {
         const Trade::SceneFieldData& field = fields[i];
-        CORRADE_INTERNAL_ASSERT(!(field.flags() & Trade::SceneFieldFlag::OffsetOnly));
 
-        /* Mapping data. Allocate if the view is a placeholder of if it wasn't
-           used by other fields yet. std::pair is used due to this being
-           returned from a std::unordered_map. */
-        std::pair<std::unordered_map<const void*, UnsignedInt>::iterator, bool> inserted;
+        /* Mapping data. If the view isn't a placeholder, check if it is
+           shared with an existing view already, and insert it if not. */
+        std::pair<std::map<std::tuple<const void*, std::size_t, std::ptrdiff_t>, UnsignedInt>::iterator, bool> inserted;
         if(field.mappingData().data())
-            inserted = uniqueMappings.emplace(field.mappingData().data(), itemViewOffset);
+            inserted = uniqueMappings.emplace(std::make_tuple(field.mappingData().data(), field.mappingData().size(), field.mappingData().stride()), itemViewOffset);
+
+        /* If it's shared (inserting failed), remember the field ID it's shared
+           with. We don't need the original size or stride for anything after
+           -- it was just used to find matching views, and if a match was
+           found, it already has a correct size, and the stride is implicit. */
         if(field.mappingData().data() && !inserted.second) {
             itemViewMappings[i].first() = inserted.first->second;
-            /* Expect that fields sharing the same object mapping view have the
-               exact same length (the length gets stored in the output view
-               during the ArrayTuple::Item construction).
 
-               We could just ignore the sharing in that case, but that'd only
-               lead to misery down the line -- imagine a field that shares the
-               first two items with a mesh and a material object mapping. If it
-               would be the last, it gets duplicated and everything is great,
-               however if it's the first then both mesh and the material get
-               duplicated, and that then asserts inside the SceneData
-               constructor, as those are always expected to share.
+        /* If it's a placeholder in one of the required-to-be-shared groups,
+           add a view that was preallocated above */
+        } else if(!field.mappingData().data() &&
+            (field.name() == Trade::SceneField::Translation ||
+             field.name() == Trade::SceneField::Rotation ||
+             field.name() == Trade::SceneField::Scaling)) {
+            itemViewMappings[i].first() = *sharedTrsMapping;
+        } else if(!field.mappingData().data() &&
+            (field.name() == Trade::SceneField::Mesh ||
+             field.name() == Trade::SceneField::MeshMaterial)) {
+            itemViewMappings[i].first() = *sharedMeshMaterialMapping;
 
-               One option that would solve this would be to store pointer+size
-               in the objectMappings map (and then only mappings that share
-               also the same size would be shared), another would be to use the
-               longest used view (and then the shorter prefixes would share
-               with it). The ultimate option would be to have some range map
-               where it'd be possible to locate also arbitrary subranges, not
-               just prefixes. A whole other topic altogether is checking for
-               the same stride, which is not done at all.
-
-               This might theoretically lead to assertions also when two
-               compile-time arrays share a common prefix and get deduplicated
-               by the compiler. But that's unlikely, at least for the internal
-               use case we have right now. */
-            CORRADE_INTERNAL_ASSERT(itemViews[inserted.first->second].size()[0] == field.size());
+        /* If it's not shared or it's a placeholder, allocate a new mapping
+           view of given size by adding a new item to the list of views to
+           allocate by an ArrayTuple. */
         } else {
             itemViewMappings[i].first() = itemViewOffset;
-            arrayAppend(items, InPlaceInit, NoInit, std::size_t(field.size()), mappingTypeSize, mappingTypeAlignment, itemViews[itemViewOffset]);
+            arrayAppend(items, InPlaceInit,
+                NoInit,
+                field.size(),
+                mappingTypeSize,
+                mappingTypeAlignment,
+                itemViews[itemViewOffset].types);
             ++itemViewOffset;
         }
 
-        /* Field data. No aliasing here right now, no sharing between mapping
-           and field data either. */
+        /* Field data, just allocate space for it. No extra logic needed -- no
+           aliasing here right now, no sharing between mapping and field data
+           either. */
         /** @todo field aliasing might be useful at some point */
         itemViewMappings[i].second() = itemViewOffset;
-        arrayAppend(items, InPlaceInit, NoInit, std::size_t(field.size()), sceneFieldTypeSize(field.fieldType())*(field.fieldArraySize() ? field.fieldArraySize() : 1), sceneFieldTypeAlignment(field.fieldType()), itemViews[itemViewOffset]);
-        ++itemViewOffset;
+        const Trade::SceneFieldType fieldType = field.fieldType();
+        if(fieldType == Trade::SceneFieldType::Bit) {
+            arrayAppend(items, InPlaceInit,
+                NoInit,
+                Containers::Size2D{field.size(), field.fieldArraySize() ? field.fieldArraySize() : 1},
+                itemViews[itemViewOffset].bits);
+            ++itemViewOffset;
+        } else {
+            arrayAppend(items, InPlaceInit,
+                NoInit,
+                field.size(), sceneFieldTypeSize(fieldType)*(field.fieldArraySize() ? field.fieldArraySize() : 1),
+                sceneFieldTypeAlignment(fieldType),
+                itemViews[itemViewOffset].types);
+            ++itemViewOffset;
+
+            /* For string fields we need to allocate also for the actual string
+               data. For space reasons the SceneFieldData stores only the data
+               pointer, size is implicit, so need to calculate it as the max of
+               end pointers of all strings */
+            if(Trade::Implementation::isSceneFieldTypeString(fieldType)) {
+                const Containers::StridedArrayView1D<const void> fieldData = field.fieldData();
+                CORRADE_ASSERT(!field.size() || fieldData.data(),
+                    "SceneTools::combineFields(): string field" << i << "has a placeholder data", (Trade::SceneData{Trade::SceneMappingType::UnsignedInt, 0, nullptr, {}}));
+
+                const char* const stringData = field.stringData();
+                CORRADE_ASSERT(!field.size() || stringData,
+                    "SceneTools::combineFields(): string field" << i << "has a placeholder string data", (Trade::SceneData{Trade::SceneMappingType::UnsignedInt, 0, nullptr, {}}));
+
+                std::size_t size;
+                if(field.size() == 0)
+                    size = 0;
+                else if(fieldType == Trade::SceneFieldType::StringOffset8)
+                    size = stringOffsetFieldSize<UnsignedByte>(fieldData);
+                else if(fieldType == Trade::SceneFieldType::StringOffset16)
+                    size = stringOffsetFieldSize<UnsignedShort>(fieldData);
+                else if(fieldType == Trade::SceneFieldType::StringOffset32)
+                    size = stringOffsetFieldSize<UnsignedInt>(fieldData);
+                else if(fieldType == Trade::SceneFieldType::StringOffset64)
+                    size = stringOffsetFieldSize<UnsignedLong>(fieldData);
+                else if(fieldType == Trade::SceneFieldType::StringRange8)
+                    size = stringRangeFieldSize<UnsignedByte>(fieldData);
+                else if(fieldType == Trade::SceneFieldType::StringRange16)
+                    size = stringRangeFieldSize<UnsignedShort>(fieldData);
+                else if(fieldType == Trade::SceneFieldType::StringRange32)
+                    size = stringRangeFieldSize<UnsignedInt>(fieldData);
+                else if(fieldType == Trade::SceneFieldType::StringRange64)
+                    size = stringRangeFieldSize<UnsignedLong>(fieldData);
+                else if(fieldType == Trade::SceneFieldType::StringRangeNullTerminated8)
+                    size = stringRangeNullTerminatedFieldSize<UnsignedByte>(stringData, fieldData);
+                else if(fieldType == Trade::SceneFieldType::StringRangeNullTerminated16)
+                    size = stringRangeNullTerminatedFieldSize<UnsignedShort>(stringData, fieldData);
+                else if(fieldType == Trade::SceneFieldType::StringRangeNullTerminated32)
+                    size = stringRangeNullTerminatedFieldSize<UnsignedInt>(stringData, fieldData);
+                else if(fieldType == Trade::SceneFieldType::StringRangeNullTerminated64)
+                    size = stringRangeNullTerminatedFieldSize<UnsignedLong>(stringData, fieldData);
+                else CORRADE_INTERNAL_ASSERT_UNREACHABLE(); /* LCOV_EXCL_LINE */
+
+                itemViewMappings[i].third() = itemViewOffset;
+                arrayAppend(items, InPlaceInit,
+                    NoInit,
+                    size,
+                    itemViews[itemViewOffset].strings);
+                ++itemViewOffset;
+            }
+        }
     }
+
+    CORRADE_INTERNAL_ASSERT(itemViewOffset <= itemViews.size());
 
     /* Allocate the data */
     Containers::Array<char> outData = Containers::ArrayTuple{items};
@@ -172,21 +314,78 @@ inline Trade::SceneData combine(const Trade::SceneMappingType mappingType, const
         combineCopyMappings<UnsignedInt>(fields, itemViews, itemViewMappings);
     else if(mappingType == Trade::SceneMappingType::UnsignedLong)
         combineCopyMappings<UnsignedLong>(fields, itemViews, itemViewMappings);
+    else CORRADE_INTERNAL_ASSERT_UNREACHABLE(); /* LCOV_EXCL_LINE */
 
     /* Copy the field data over. No special handling needed here. */
     for(std::size_t i = 0; i != fields.size(); ++i) {
-        /* If the field has null field data, no need to copy anything. This
-           covers reserved fields but also fields of zero size. */
-        if(!fields[i].fieldData()) continue;
+        const Trade::SceneFieldData& field = fields[i];
+        const Trade::SceneFieldType fieldType = field.fieldType();
+        if(fieldType == Trade::SceneFieldType::Bit) {
+            const Containers::StridedBitArrayView2D src = field.fieldBitData();
 
-        /** @todo isn't there some less awful way to create a 2D view, sigh */
-        Utility::copy(Containers::arrayCast<2, const char>(fields[i].fieldData(), sceneFieldTypeSize(fields[i].fieldType())*(fields[i].fieldArraySize() ? fields[i].fieldArraySize() : 1)), itemViews[itemViewMappings[i].second()]);
+            /* If the field has null field data, no need to copy anything. This
+               covers reserved fields but also fields of zero size. */
+            if(!src.data()) continue;
+
+            /** @todo this needs Utility::copy() for bits, which is HARD */
+            const Containers::MutableStridedBitArrayView2D dst = itemViews[itemViewMappings[i].second()].bits;
+            const std::size_t arraySize = field.fieldArraySize() ? field.fieldArraySize() : 1;
+            for(std::size_t i = 0, iMax = field.size(); i != iMax; ++i) {
+                const Containers::StridedBitArrayView1D srcI = src[i];
+                const Containers::MutableStridedBitArrayView1D dstI = dst[i];
+                for(std::size_t j = 0; j != arraySize; ++j)
+                    dstI.set(j, srcI[j]);
+            }
+        } else {
+            const Containers::StridedArrayView1D<const void> src = field.fieldData();
+
+            /* If the field has null field data, no need to copy anything. This
+               covers reserved fields but also fields of zero size. */
+            if(!src.data()) continue;
+
+            /** @todo isn't there some less awful way to create a 2D view, sigh */
+            Utility::copy(Containers::arrayCast<2, const char>(src, sceneFieldTypeSize(fieldType)*(field.fieldArraySize() ? field.fieldArraySize() : 1)), itemViews[itemViewMappings[i].second()].types);
+
+            /* If the field is a string, copy also the actual string data. The
+               size was calculated above and is recorded into the output
+               view. */
+            if(Trade::Implementation::isSceneFieldTypeString(fieldType)) {
+                const Containers::MutableStringView dst = itemViews[itemViewMappings[i].third()].strings;
+                Utility::copy(Containers::arrayView(field.stringData(), dst.size()), dst);
+            }
+        }
     }
 
     /* Map the fields to the new data */
     Containers::Array<Trade::SceneFieldData> outFields{fields.size()};
     for(std::size_t i = 0; i != fields.size(); ++i) {
-        outFields[i] = Trade::SceneFieldData{fields[i].name(), itemViews[itemViewMappings[i].first()], fields[i].fieldType(), itemViews[itemViewMappings[i].second()], fields[i].fieldArraySize(), fields[i].flags()};
+        const Trade::SceneFieldData& field = fields[i];
+        const Trade::SceneFieldType fieldType = field.fieldType();
+        if(fieldType == Trade::SceneFieldType::Bit) {
+            /* Pass arrays as 2D views, non-arrays as 1D views */
+            if(field.fieldArraySize())
+                outFields[i] = Trade::SceneFieldData{field.name(),
+                    itemViews[itemViewMappings[i].first()].types,
+                    itemViews[itemViewMappings[i].second()].bits,
+                    field.flags()};
+            else
+                outFields[i] = Trade::SceneFieldData{field.name(),
+                    itemViews[itemViewMappings[i].first()].types,
+                    /** @todo creating a 1D view isn't really easy either, huh? */
+                    itemViews[itemViewMappings[i].second()].bits.transposed<0, 1>()[0],
+                    field.flags()};
+        } else if(Trade::Implementation::isSceneFieldTypeString(fieldType)) {
+            outFields[i] = Trade::SceneFieldData{field.name(),
+                itemViews[itemViewMappings[i].first()].types,
+                itemViews[itemViewMappings[i].third()].strings.data(),
+                fieldType, itemViews[itemViewMappings[i].second()].types,
+                field.flags()};
+        } else {
+            outFields[i] = Trade::SceneFieldData{field.name(),
+                itemViews[itemViewMappings[i].first()].types,
+                fieldType, itemViews[itemViewMappings[i].second()].types,
+                field.fieldArraySize(), field.flags()};
+        }
     }
 
     return Trade::SceneData{mappingType, mappingBound, std::move(outData), std::move(outFields)};

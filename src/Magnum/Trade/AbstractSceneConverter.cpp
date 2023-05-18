@@ -622,10 +622,10 @@ void AbstractSceneConverter::setSceneFieldName(const SceneField field, const Con
     CORRADE_ASSERT(isSceneFieldCustom(field),
         "Trade::AbstractSceneConverter::setSceneFieldName():" << field << "is not custom", );
 
-    doSetSceneFieldName(sceneFieldCustom(field), name);
+    doSetSceneFieldName(field, name);
 }
 
-void AbstractSceneConverter::doSetSceneFieldName(UnsignedInt, Containers::StringView) {}
+void AbstractSceneConverter::doSetSceneFieldName(SceneField, Containers::StringView) {}
 
 void AbstractSceneConverter::setObjectName(const UnsignedLong object, const Containers::StringView name) {
     CORRADE_ASSERT(features() & SceneConverterFeature::AddScenes,
@@ -674,6 +674,19 @@ Containers::Optional<UnsignedInt> AbstractSceneConverter::add(const AnimationDat
 bool AbstractSceneConverter::doAdd(UnsignedInt, const AnimationData&, Containers::StringView) {
     CORRADE_ASSERT_UNREACHABLE("Trade::AbstractSceneConverter::add(): animation conversion advertised but not implemented", {});
 }
+
+void AbstractSceneConverter::setAnimationTrackTargetName(const AnimationTrackTarget target, const Containers::StringView name) {
+    CORRADE_ASSERT(features() & SceneConverterFeature::AddAnimations,
+        "Trade::AbstractSceneConverter::setAnimationTrackTargetName(): feature not supported", );
+    CORRADE_ASSERT(_state,
+        "Trade::AbstractSceneConverter::setAnimationTrackTargetName(): no conversion in progress", );
+    CORRADE_ASSERT(isAnimationTrackTargetCustom(target),
+        "Trade::AbstractSceneConverter::setAnimationTrackTargetName():" << target << "is not custom", );
+
+    doSetAnimationTrackTargetName(target, name);
+}
+
+void AbstractSceneConverter::doSetAnimationTrackTargetName(AnimationTrackTarget, Containers::StringView) {}
 
 UnsignedInt AbstractSceneConverter::lightCount() const {
     CORRADE_ASSERT(_state, "Trade::AbstractSceneConverter::lightCount(): no conversion in progress", {});
@@ -849,10 +862,10 @@ void AbstractSceneConverter::setMeshAttributeName(const MeshAttribute attribute,
     CORRADE_ASSERT(isMeshAttributeCustom(attribute),
         "Trade::AbstractSceneConverter::setMeshAttributeName():" << attribute << "is not custom", );
 
-    doSetMeshAttributeName(meshAttributeCustom(attribute), name);
+    doSetMeshAttributeName(attribute, name);
 }
 
-void AbstractSceneConverter::doSetMeshAttributeName(UnsignedShort, Containers::StringView) {}
+void AbstractSceneConverter::doSetMeshAttributeName(MeshAttribute, Containers::StringView) {}
 
 UnsignedInt AbstractSceneConverter::materialCount() const {
     CORRADE_ASSERT(_state, "Trade::AbstractSceneConverter::materialCount(): no conversion in progress", {});
@@ -905,7 +918,12 @@ bool AbstractSceneConverter::doAdd(UnsignedInt, const TextureData&, Containers::
 #ifndef CORRADE_NO_ASSERT
 namespace {
 
-template<UnsignedInt dimensions> bool checkImageValidity(const char* const messagePrefix, const ImageData<dimensions>& image) {
+template<UnsignedInt dimensions> bool checkImageValidity(const char*
+    #ifndef CORRADE_STANDARD_ASSERT
+    const messagePrefix
+    #endif
+    , const ImageData<dimensions>& image)
+{
     /* At some point there might be a file format that allows zero-sized
        images, but so far I don't know about any. When such format appears,
        this check will get moved to plugin implementations that can't work with
@@ -920,7 +938,12 @@ template<UnsignedInt dimensions> bool checkImageValidity(const char* const messa
     return true;
 }
 
-template<UnsignedInt dimensions> bool checkImageValidity(const char* const messagePrefix, const Containers::Iterable<const ImageData<dimensions>>& imageLevels) {
+template<UnsignedInt dimensions> bool checkImageValidity(const char*
+    #ifndef CORRADE_STANDARD_ASSERT
+    const messagePrefix
+    #endif
+    , const Containers::Iterable<const ImageData<dimensions>>& imageLevels)
+{
     CORRADE_ASSERT(!imageLevels.isEmpty(),
         messagePrefix << "at least one image level has to be specified", false);
 

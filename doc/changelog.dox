@@ -54,7 +54,10 @@ See also:
     @ref GL::TextureFormat and @ref Vk::PixelFormat and (partial) support in
     @ref DebugTools::CompareImage
 -   New @ref pixelFormatChannelFormat(), @ref pixelFormatChannelCount(),
-    @ref isPixelFormatSrgb() and @ref isPixelFormatDepthOrStencil() helpers
+    @ref isPixelFormatNormalized(), @ref isPixelFormatIntegral(),
+    @ref isPixelFormatFloatingPoint(), @ref isPixelFormatSrgb(),
+    @ref isPixelFormatDepthOrStencil() and
+    @ref pixelFormat(PixelFormat, UnsignedInt, bool) helpers
 -   New @ref Degh, @ref Radh, @ref Range1Dh, @ref Range2Dh and @ref Range3Dh
     typedefs for half-float angles and ranges
 -   New @ref Range1Dui, @ref Range2Dui and @ref Range3Dui typedefs for unsigned
@@ -207,6 +210,10 @@ See also:
     @relativeref{Math::Intersection,pointSphere()}, which are just wrappers
     over trivial code but easier to discover
 -   Added an unary @cpp operator+() @ce to all @ref Math classes
+-   Added @ref Math::Quaternion::reflection() and
+    @ref Math::Quaternion::reflectVector(), but mainly just for documentation
+    purposes as reflections cannot be combined with rotations and thus are
+    mostly useless in practice
 
 @subsubsection changelog-latest-new-materialtools MaterialTools library
 
@@ -220,7 +227,8 @@ See also:
     @ref MeshTools::boundingRange() for AABBs (see [mosra/magnum#557](https://github.com/mosra/magnum/pull/557))
 -   Added @ref MeshTools::generateQuadIndices() for quad triangulation
     including non-convex and non-planar quads
--   New @ref MeshTools::filterOnlyAttributes() and
+-   New @ref MeshTools::filterAttributes(),
+    @ref MeshTools::filterOnlyAttributes() and
     @ref MeshTools::filterExceptAttributes() utilities for filtering mesh data
     attribute lists
 -   New family of @ref MeshTools::transform2D(), @ref MeshTools::transform3D()
@@ -316,6 +324,8 @@ See also:
 -   Added @ref Shaders::PhongGL::Flag::NoSpecular as a significantly faster
     alternative to setting specular color to @cpp 0x00000000_rgbaf @ce in case
     specular highlights are not desired
+-   Added @ref Shaders::PhongGL::Flag::DoubleSided for rendering double-sided
+    meshes
 
 @subsubsection changelog-latest-new-shadertools ShaderTools library
 
@@ -376,6 +386,9 @@ See also:
     also exposed via a `--map` option in the
     @ref magnum-sceneconverter "magnum-sceneconverter" and
     @ref magnum-imageconverter "magnum-imageconverter" utilities
+-   Added @ref Trade::animationTrackTypeSize() and
+    @ref Trade::animationTrackTypeAlignment() for API consistency with other
+    type enums
 -   Added @ref Trade::isAnimationTrackTargetCustom() and
     @ref Trade::animationTrackTargetCustom() helpers as well as
     @ref Trade::AbstractImporter::animationTrackTargetName() and
@@ -537,6 +550,9 @@ See also:
 
 @subsubsection changelog-latest-changes-math Math library
 
+-   Assertions in all @ref Math APIs except for batch functions in
+    @ref Magnum/Math/PackingBatch.h and @ref Magnum/Math/FunctionsBatch.h
+    were changed to debug-only for better performance in release builds
 -   Added @ref Math::BitVector::set(std::size_t) and
     @ref Math::BitVector::reset(std::size_t) for branchless bit setting
 -   Added @ref Math::castInto() overloads for casting between @ref UnsignedByte
@@ -651,6 +667,11 @@ See also:
     `--info-materials`, `--info-meshes`, `--info-skins` and `--info-textures`
     for printing information just about particular data type, with `--info`
     being a shortcut for all specified together
+-   Added a `--prefer` option to @ref magnum-sceneconverter "magnum-sceneconverter",
+    allowing to specify what plugins should be preferred for particular import
+    and conversion plugin aliases
+-   Added a `--set` option to @ref magnum-sceneconverter "magnum-sceneconverter",
+    allowing to set configuration options to arbitrary plugins
 
 @subsubsection changelog-latest-changes-shaders Shaders library
 
@@ -850,6 +871,7 @@ See also:
     [mosra/magnum#602](https://github.com/mosra/magnum/pull/602))
 -   Fixed various variable shadowing warings on MSVC (see [mosra/magnum#611](https://github.com/mosra/magnum/issues/611))
 -   Fixed compilation on a non-deprecated build (see [mosra/magnum#612](https://github.com/mosra/magnum/pull/612))
+-   Fixed build of the @ref Vk library with @ref CORRADE_STANDARD_ASSERT
 
 @subsection changelog-latest-bugfixes Bug fixes
 
@@ -968,6 +990,10 @@ See also:
     [mosra/magnum#535](https://github.com/mosra/magnum/issues/535))
 -   Fixed various wrong assumptions about Mac builds being always desktop GLES
     (see [mosra/magnum#](https://github.com/mosra/magnum/issues/541))
+-   Fixed the @cpp "firefox-fake-disjoint-timer-query-webgl2" @ce workaround to
+    work on Firefox again. The reported renderer string got changed, possibly
+    in relation to @webgl_extension{WEBGL,debug_renderer_info} being
+    deprecated, which broke Firefox detection in the workaround enabling code.
 
 @subsection changelog-latest-deprecated Deprecated APIs
 
@@ -1052,6 +1078,12 @@ See also:
     practice that meant compiling at most two or three shaders at once. The new
     API allows for much larger parallelism as well as an ability to query
     completion status.
+-   @cpp MeshTools::owned() @ce was deprecated in favor of a more clearly named
+    @ref MeshTools::copy() utility living in a new @ref Magnum/MeshTools/Copy.h
+    header. To avoid having too many little headers,
+    @ref MeshTools::reference() and @ref MeshTools::mutableReference() were
+    moved there as well, with @cpp Magnum/MeshTools/Reference.h @ce being a
+    deprecated alias now.
 -   @cpp Shaders::DistanceFieldVector @ce, @cpp Shaders::Flat @ce,
     @cpp Shaders::Generic @ce, @cpp Shaders::MeshVisualizer2D @ce,
     @cpp Shaders::MeshVisualizer3D @ce, @cpp Shaders::Phong @ce,
@@ -1092,9 +1124,11 @@ See also:
     possible cases. The variant taking an @ref Animation::TrackView is kept
     however as it may be convenient when exporting already-populated animation
     instances.
--   @cpp Trade::LightData::Type::Infinite @ce, originally adapted from the
+-   @cpp Trade::LightData::Type @ce is deprecated in favor of
+    @ref Trade::LightType that is shorter to type and can be forward-declared
+-   @cpp Trade::LightType::Infinite @ce, originally adapted from the
     OpenGEX specification, is deprecated in favor of
-    @ref Trade::LightData::Type::Directional as that's the more commonly used
+    @ref Trade::LightType::Directional as that's the more commonly used
     term
 -   @cpp Trade::PhongMaterialData::ambientCoordinateSet() @ce,
     @cpp diffuseCoordinateSet() @ce, @cpp specularCoordinateSet() @ce and

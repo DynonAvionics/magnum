@@ -185,6 +185,18 @@ Int AnySceneImporter::doAnimationForName(const Containers::StringView name) { re
 Containers::String AnySceneImporter::doAnimationName(const UnsignedInt id) { return _in->animationName(id); }
 Containers::Optional<AnimationData> AnySceneImporter::doAnimation(const UnsignedInt id) { return _in->animation(id); }
 
+AnimationTrackTarget AnySceneImporter::doAnimationTrackTargetForName(const Containers::StringView name) {
+    /* This API can be called even if no file is opened, in that case return
+       an invalid ID */
+    return _in ? _in->animationTrackTargetForName(name) : AnimationTrackTarget{};
+
+}
+Containers::String AnySceneImporter::doAnimationTrackTargetName(const AnimationTrackTarget name) {
+    /* This API can be called even if no file is opened, in that case return
+       an empty name */
+    return _in ? _in->animationTrackTargetName(name) : Containers::String{};
+}
+
 Int AnySceneImporter::doDefaultScene() const { return _in->defaultScene(); }
 
 UnsignedInt AnySceneImporter::doSceneCount() const { return _in->sceneCount(); }
@@ -200,10 +212,10 @@ SceneField AnySceneImporter::doSceneFieldForName(const Containers::StringView na
        an invalid ID */
     return _in ? _in->sceneFieldForName(name) : SceneField{};
 }
-Containers::String AnySceneImporter::doSceneFieldName(const UnsignedInt name) {
+Containers::String AnySceneImporter::doSceneFieldName(const SceneField name) {
     /* This API can be called even if no file is opened, in that case return
-       an invalid ID */
-    return _in ? _in->sceneFieldName(sceneFieldCustom(name)) : Containers::String{};
+       an empty name */
+    return _in ? _in->sceneFieldName(name) : Containers::String{};
 }
 
 UnsignedInt AnySceneImporter::doLightCount() const { return _in->lightCount(); }
@@ -250,10 +262,10 @@ MeshAttribute AnySceneImporter::doMeshAttributeForName(const Containers::StringV
        an invalid ID */
     return _in ? _in->meshAttributeForName(name) : MeshAttribute{};
 }
-Containers::String AnySceneImporter::doMeshAttributeName(const UnsignedShort id) {
+Containers::String AnySceneImporter::doMeshAttributeName(const MeshAttribute id) {
     /* This API can be called even if no file is opened, in that case return
-       an invalid ID */
-    return _in ? _in->meshAttributeName(meshAttributeCustom(id)) : Containers::String{};
+       an empty name */
+    return _in ? _in->meshAttributeName(id) : Containers::String{};
 }
 
 #ifdef MAGNUM_BUILD_DEPRECATED

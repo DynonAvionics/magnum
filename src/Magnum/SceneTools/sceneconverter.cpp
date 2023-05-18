@@ -35,10 +35,10 @@
 
 #include "Magnum/MaterialTools/PhongToPbrMetallicRoughness.h"
 #include "Magnum/MeshTools/Concatenate.h"
-#include "Magnum/MeshTools/Reference.h"
+#include "Magnum/MeshTools/Copy.h"
 #include "Magnum/MeshTools/RemoveDuplicates.h"
 #include "Magnum/MeshTools/Transform.h"
-#include "Magnum/SceneTools/FlattenTransformationHierarchy.h"
+#include "Magnum/SceneTools/Hierarchy.h"
 #include "Magnum/Trade/AbstractImporter.h"
 #include "Magnum/Trade/MeshData.h"
 #include "Magnum/Trade/AbstractImageConverter.h"
@@ -179,13 +179,16 @@ magnum-sceneconverter scene.gltf scene.decimated.gltf \
 @code{.sh}
 magnum-sceneconverter [-h|--help] [-I|--importer PLUGIN]
     [-C|--converter PLUGIN]... [-P|--image-converter PLUGIN]...
-    [-M|--mesh-converter PLUGIN]... [--plugin-dir DIR] [--map]
-    [--only-mesh-attributes N1,N2-N3…] [--remove-duplicate-vertices]
+    [-M|--mesh-converter PLUGIN]... [--plugin-dir DIR]
+    [--prefer alias:plugin1,plugin2,…]... [--set plugin:key=val,key2=val2,…]...
+    [--map] [--only-mesh-attributes N1,N2-N3…] [--remove-duplicate-vertices]
     [--remove-duplicate-vertices-fuzzy EPSILON] [--phong-to-pbr]
     [-i|--importer-options key=val,key2=val2,…]
     [-c|--converter-options key=val,key2=val2,…]...
     [-p|--image-converter-options key=val,key2=val2,…]...
     [-m|--mesh-converter-options key=val,key2=val2,…]...
+    [--passthrough-on-image-converter-failure]
+    [--passthrough-on-mesh-converter-failure]
     [--mesh ID] [--mesh-level INDEX] [--concatenate-meshes] [--info-importer]
     [--info-converter] [--info-image-converter] [--info-animations]
     [--info-images] [--info-lights] [--info-cameras] [--info-materials]
@@ -207,6 +210,9 @@ Arguments:
 -   `-M`, `--mesh-converter PLUGIN` --- converter plugin(s) to apply to each
     mesh in the scene
 -   `--plugin-dir DIR` --- override base plugin dir
+-   `--prefer alias:plugin1,plugin2,…` --- prefer particular plugins for given
+    alias(es)
+-   `--set plugin:key=val,key2=val2,…` ---  set global plugin(s) option
 -   `--map` --- memory-map the input for zero-copy import (works only for
     standalone files)
 -   `--only-mesh-attributes N1,N2-N3…` --- include only mesh attributes of
@@ -228,9 +234,13 @@ Arguments:
     options to pass to image converter(s)
 -   `-m`, `--mesh-converter-options key=val,key2=val2,…` --- configuration
     options to pass to mesh converter(s)
+-   `--passthrough-on-image-converter-failure` --- pass original data through
+    if `--image-converter` fails
+-   `--passthrough-on-mesh-converter-failure` --- pass original data through
+    if `--mesh-converter` fails
 -   `--mesh ID` --- convert just a single mesh instead of the whole scene
 -   `--mesh-level LEVEL` --- level to select for single-mesh conversion
--   `--concatenate-meshes` -- flatten mesh hierarchy and concatenate them all
+-   `--concatenate-meshes` --- flatten mesh hierarchy and concatenate them all
     together @m_class{m-label m-warning} **experimental**
 -   `--info-importer` --- print info about the importer plugin and exit
 -   `--info-converter` --- print info about the scene or mesh converter plugin
@@ -301,9 +311,9 @@ on meshes and materials before passing them to any converter.
 If `--concatenate-meshes` is given, all meshes of the input file are
 first concatenated into a single mesh using @ref MeshTools::concatenate(), with
 the scene hierarchy transformation baked in using
-@ref SceneTools::flattenTransformationHierarchy3D(), and then passed through
-the remaining operations. Only attributes that are present in the first mesh
-are taken, if `--only-mesh-attributes` is specified as well, the IDs reference
+@ref SceneTools::absoluteFieldTransformations3D(), and then passed through the
+remaining operations. Only attributes that are present in the first mesh are
+taken, if `--only-mesh-attributes` is specified as well, the IDs reference
 attributes of the first mesh.
 */
 
@@ -335,6 +345,8 @@ bool isDataInfoRequested(const Utility::Arguments& args) {
 }
 
 template<UnsignedInt dimensions> bool runImageConverters(PluginManager::Manager<Trade::AbstractImageConverter>& imageConverterManager, const Utility::Arguments& args, const UnsignedInt i, Containers::Optional<Trade::ImageData<dimensions>>& image) {
+    const bool passthroughOnConversionFailure = args.isSet("passthrough-on-image-converter-failure");
+
     for(std::size_t j = 0, imageConverterCount = args.arrayValueCount("image-converter"); j != imageConverterCount; ++j) {
         const Containers::StringView imageConverterName = args.arrayValue<Containers::StringView>("image-converter", j);
         if(args.isSet("verbose")) {
@@ -381,7 +393,11 @@ template<UnsignedInt dimensions> bool runImageConverters(PluginManager::Manager<
         /** @todo handle image levels here, once GltfSceneConverter is capable
             of converting them (which needs AbstractImageConverter to be
             reworked around ImageData) */
-        if(!(image = imageConverter->convert(*image))) {
+        if(Containers::Optional<Trade::ImageData<dimensions>> converted = imageConverter->convert(*image)) {
+            image = std::move(converted);
+        } else if(passthroughOnConversionFailure) {
+            Warning{} << "Cannot process" << dimensions << Debug::nospace << "D image" << i << "with" << imageConverterName << Debug::nospace << ", passing the original through";
+        } else {
             Error{} << "Cannot process" << dimensions << Debug::nospace << "D image" << i << "with" << imageConverterName;
             return false;
         }
@@ -401,6 +417,8 @@ int main(int argc, char** argv) {
         .addArrayOption('P', "image-converter").setHelp("image-converter", "converter plugin(s) to apply to each image in the scene", "PLUGIN")
         .addArrayOption('M', "mesh-converter").setHelp("mesh-converter", "converter plugin(s) to apply to each mesh in the scene", "PLUGIN")
         .addOption("plugin-dir").setHelp("plugin-dir", "override base plugin dir", "DIR")
+        .addArrayOption("prefer").setHelp("prefer", "prefer particular plugins for given alias(es)", "alias:plugin1,plugin2,…")
+        .addArrayOption("set").setHelp("set", "set global plugin(s) options", "plugin:key=val,key2=val2,…")
         #if defined(CORRADE_TARGET_UNIX) || (defined(CORRADE_TARGET_WINDOWS) && !defined(CORRADE_TARGET_WINDOWS_RT))
         .addBooleanOption("map").setHelp("map", "memory-map the input for zero-copy import (works only for standalone files)")
         #endif
@@ -412,6 +430,8 @@ int main(int argc, char** argv) {
         .addArrayOption('c', "converter-options").setHelp("converter-options", "configuration options to pass to the converter(s)", "key=val,key2=val2,…")
         .addArrayOption('p', "image-converter-options").setHelp("image-converter-options", "configuration options to pass to the image converter(s)", "key=val,key2=val2,…")
         .addArrayOption('m', "mesh-converter-options").setHelp("mesh-converter-options", "configuration options to pass to the mesh converter(s)", "key=val,key2=val2,…")
+        .addBooleanOption("passthrough-on-image-converter-failure").setHelp("passthrough-on-image-converter-failure", "pass original data through if --image-converter fails")
+        .addBooleanOption("passthrough-on-mesh-converter-failure").setHelp("passthrough-on-mesh-converter-failure", "pass original data through if --mesh-converter fails")
         .addOption("mesh").setHelp("mesh", "convert just a single mesh instead of the whole scene, ignored if --concatenate-meshes is specified", "ID")
         .addOption("mesh-level").setHelp("mesh-level", "level to select for single-mesh conversion", "index")
         .addBooleanOption("concatenate-meshes").setHelp("concatenate-meshes", "flatten mesh hierarchy and concatenate them all together")
@@ -539,8 +559,8 @@ well, the IDs reference attributes of the first mesh.)")
         Error{} << "The --mesh-level option can only be used with --mesh";
         return 1;
     }
-    /** @todo remove this once only-attributes can work with attribute names
-        and thus for more meshes */
+    /** @todo remove this once only-mesh-attributes can work with attribute
+        names and thus for more meshes */
     if(args.value<Containers::StringView>("only-mesh-attributes") && !args.value<Containers::StringView>("mesh") && !args.isSet("concatenate-meshes")) {
         Error{} << "The --only-mesh-attributes option can only be used with --mesh or --concatenate-meshes";
         return 1;
@@ -563,6 +583,94 @@ well, the IDs reference attributes of the first mesh.)")
         args.value("plugin-dir").empty() ? Containers::String{} :
         Utility::Path::join(args.value("plugin-dir"), Utility::Path::split(Trade::AbstractSceneConverter::pluginSearchPaths().back()).second())};
     converterManager.registerExternalManager(imageConverterManager);
+
+    /* Set preferred plugins */
+    for(std::size_t i = 0, iMax = args.arrayValueCount("prefer"); i != iMax; ++i) {
+        const auto value = args.arrayValue<Containers::StringView>("prefer", i);
+        const Containers::Array3<Containers::StringView> aliasNames = value.partition(':');
+        if(!aliasNames[1]) {
+            Error{} << "Invalid --prefer option" << value;
+            return 1;
+        }
+
+        /* Figure out manager name */
+        PluginManager::AbstractManager* manager;
+        if(aliasNames[0].hasSuffix("Importer"_s))
+            manager = &importerManager;
+        else if(aliasNames[0].hasSuffix("ImageConverter"_s))
+            manager = &imageConverterManager;
+        else if(aliasNames[0].hasSuffix("SceneConverter"_s))
+            manager = &converterManager;
+        else {
+            Error{} << "Alias" << aliasNames[0] << "not recognized for a --prefer option";
+            return 1;
+        }
+
+        /* The alias has to be found, otherwise it'd assert */
+        if(manager->loadState(aliasNames[0]) == PluginManager::LoadState::NotFound) {
+            Error{} << "Alias" << aliasNames[0] << "not found for a --prefer option";
+            return 1;
+        }
+
+        /* Check that the names actually provide given alias, otherwise it'd
+           assert */
+        const Containers::Array<Containers::StringView> names = aliasNames[2].splitWithoutEmptyParts(',');
+        for(const Containers::StringView name: names) {
+            /* Not found plugins are allowed in the list */
+            const PluginManager::PluginMetadata* const metadata = manager->metadata(name);
+            if(!metadata)
+                continue;
+
+            bool found = false;
+            for(const Containers::StringView provides: metadata->provides()) {
+                if(provides == aliasNames[0]) {
+                    found = true;
+                    break;
+                }
+            }
+            if(!found) {
+                Error{} << name << "doesn't provide" << aliasNames[0] << "for a --prefer option";
+                return 1;
+            }
+        }
+
+        manager->setPreferredPlugins(aliasNames[0], names);
+    }
+
+    /* Set global plugin options */
+    for(std::size_t i = 0, iMax = args.arrayValueCount("set"); i != iMax; ++i) {
+        const auto value = args.arrayValue<Containers::StringView>("set", i);
+        const Containers::Array3<Containers::StringView> nameOptions = value.partition(':');
+        if(!nameOptions[1]) {
+            Error{} << "Invalid --set option" << value;
+            return 1;
+        }
+
+        /* Figure out manager name */
+        PluginManager::AbstractManager* manager;
+        if(nameOptions[0].hasSuffix("Importer"_s))
+            manager = &importerManager;
+        else if(nameOptions[0].hasSuffix("ImageConverter"_s))
+            manager = &imageConverterManager;
+        else if(nameOptions[0].hasSuffix("SceneConverter"_s))
+            manager = &converterManager;
+        else {
+            Error{} << "Plugin" << nameOptions[0] << "not recognized for a --set option";
+            return 1;
+        }
+
+        /* Get the metadata to access global configuration */
+        PluginManager::PluginMetadata* const metadata = manager->metadata(nameOptions[0]);
+        if(!metadata) {
+            Error{} << "Plugin" << nameOptions[0] << "not found for a --set option";
+            return 1;
+        }
+
+        /* Set options. Doing things like --set AnyImageImporter:foo=bar makes
+           no sense, so this isn't excluding any "Any*" plugins from the
+           unrecognized option warnings */
+        Implementation::setOptions(nameOptions[0], metadata->configuration(), {}, nameOptions[2]);
+    }
 
     /* Print plugin info, if requested */
     /** @todo these all duplicate plugin loading & option setting, move to
@@ -712,7 +820,7 @@ well, the IDs reference attributes of the first mesh.)")
                 Containers::Array<Containers::Pair<UnsignedInt, Containers::Pair<UnsignedInt, Int>>>
                     meshesMaterials = scene->meshesMaterialsAsArray();
                 Containers::Array<Matrix4> transformations =
-                    SceneTools::flattenTransformationHierarchy3D(*scene, Trade::SceneField::Mesh);
+                    SceneTools::absoluteFieldTransformations3D(*scene, Trade::SceneField::Mesh);
                 Containers::Array<Trade::MeshData> flattenedMeshes;
                 {
                     Trade::Implementation::Duration d{conversionTime};
@@ -775,7 +883,7 @@ well, the IDs reference attributes of the first mesh.)")
                     if(!isMeshAttributeCustom(attributeName)) continue;
                     /* Appending even empty ones so we don't have to
                        special-case "not found" in doMeshAttributeName() */
-                    arrayAppend(attributeNames, InPlaceInit, meshAttributeCustom(attributeName), original.meshAttributeName(attributeName));
+                    arrayAppend(attributeNames, InPlaceInit, attributeName, original.meshAttributeName(attributeName));
                 }
             }
 
@@ -787,8 +895,8 @@ well, the IDs reference attributes of the first mesh.)")
             Containers::String doMeshName(UnsignedInt) override {
                 return name;
             }
-            Containers::String doMeshAttributeName(UnsignedShort name) override {
-                for(const Containers::Pair<UnsignedShort, Containers::String>& i: attributeNames)
+            Containers::String doMeshAttributeName(Trade::MeshAttribute name) override {
+                for(const Containers::Pair<Trade::MeshAttribute, Containers::String>& i: attributeNames)
                     if(i.first() == name) return i.second();
                 /* All custom attributes, including the unnamed, are in the
                    attributeNames array and both our attribute name propagation
@@ -803,7 +911,7 @@ well, the IDs reference attributes of the first mesh.)")
 
             Trade::MeshData mesh;
             Containers::String name;
-            Containers::Array<Containers::Pair<UnsignedShort, Containers::String>> attributeNames;
+            Containers::Array<Containers::Pair<Trade::MeshAttribute, Containers::String>> attributeNames;
         };
 
         /* Save the previous importer so we can pass it to the constructor in
@@ -879,6 +987,8 @@ well, the IDs reference attributes of the first mesh.)")
        args.value<Containers::StringView>("remove-duplicate-vertices-fuzzy") ||
        args.arrayValueCount("mesh-converter"))
     {
+        const bool passthroughOnConversionFailure = args.isSet("passthrough-on-mesh-converter-failure");
+
         arrayReserve(meshes, importer->meshCount());
 
         for(UnsignedInt i = 0; i != importer->meshCount(); ++i) {
@@ -954,7 +1064,11 @@ well, the IDs reference attributes of the first mesh.)")
 
                 /** @todo handle mesh levels here, once any plugin is capable
                     of converting them */
-                if(!(mesh = meshConverter->convert(*mesh))) {
+                if(Containers::Optional<Trade::MeshData> converted = meshConverter->convert(*mesh)) {
+                    mesh = std::move(converted);
+                } else if(passthroughOnConversionFailure) {
+                    Warning{} << "Cannot process mesh" << i << "with" << meshConverterName << Debug::nospace << ", passing the original through";
+                } else {
                     Error{} << "Cannot process mesh" << i << "with" << meshConverterName;
                     return 1;
                 }

@@ -39,16 +39,19 @@ set(CMAKE_FOLDER "Magnum/SceneTools")
 find_package(Corrade REQUIRED PluginManager)
 
 # Files shared between main library and unit test library
-set(MagnumSceneTools_SRCS )
+set(MagnumSceneTools_SRCS
+    Copy.cpp)
 
 # Files compiled with different flags for main library and unit test library
 set(MagnumSceneTools_GracefulAssert_SRCS
-    FlattenTransformationHierarchy.cpp
-    OrderClusterParents.cpp)
+    Combine.cpp
+    Filter.cpp
+    Hierarchy.cpp)
 
 set(MagnumSceneTools_HEADERS
-    FlattenTransformationHierarchy.h
-    OrderClusterParents.h
+    Combine.h
+    Filter.h
+    Hierarchy.h
 
     visibility.h)
 
@@ -59,25 +62,28 @@ set(MagnumSceneTools_PRIVATE_HEADERS
 
 if(MAGNUM_BUILD_DEPRECATED)
     list(APPEND MagnumSceneTools_GracefulAssert_SRCS FlattenMeshHierarchy.cpp)
-    list(APPEND MagnumSceneTools_HEADERS FlattenMeshHierarchy.h)
+    list(APPEND MagnumSceneTools_HEADERS
+        FlattenMeshHierarchy.h
+        FlattenTransformationHierarchy.h
+        OrderClusterParents.h)
 endif()
 
-## Objects shared between main and test library
-#add_library(MagnumSceneToolsObjects OBJECT
-    #${MagnumSceneTools_SRCS}
-    #${MagnumSceneTools_HEADERS}
-    #${MagnumSceneTools_PRIVATE_HEADERS})
-#target_include_directories(MagnumSceneToolsObjects PUBLIC $<TARGET_PROPERTY:Magnum,INTERFACE_INCLUDE_DIRECTORIES>)
-#if(NOT MAGNUM_BUILD_STATIC)
-    #target_compile_definitions(MagnumSceneToolsObjects PRIVATE "MagnumSceneToolsObjects_EXPORTS")
-#endif()
-#if(NOT MAGNUM_BUILD_STATIC OR MAGNUM_BUILD_STATIC_PIC)
-    #set_target_properties(MagnumSceneToolsObjects PROPERTIES POSITION_INDEPENDENT_CODE ON)
-#endif()
+# Objects shared between main and test library
+add_library(MagnumSceneToolsObjects OBJECT
+    ${MagnumSceneTools_SRCS}
+    ${MagnumSceneTools_HEADERS}
+    ${MagnumSceneTools_PRIVATE_HEADERS})
+target_include_directories(MagnumSceneToolsObjects PUBLIC $<TARGET_PROPERTY:Magnum,INTERFACE_INCLUDE_DIRECTORIES>)
+if(NOT MAGNUM_BUILD_STATIC)
+    target_compile_definitions(MagnumSceneToolsObjects PRIVATE "MagnumSceneToolsObjects_EXPORTS")
+endif()
+if(NOT MAGNUM_BUILD_STATIC OR MAGNUM_BUILD_STATIC_PIC)
+    set_target_properties(MagnumSceneToolsObjects PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
 
 # Main SceneTools library
 add_library(MagnumSceneTools ${SHARED_OR_STATIC}
-    #$<TARGET_OBJECTS:MagnumSceneToolsObjects>
+    $<TARGET_OBJECTS:MagnumSceneToolsObjects>
     ${MagnumSceneTools_GracefulAssert_SRCS}
     ${MagnumSceneTools_HEADERS}
     ${MagnumSceneTools_PRIVATE_HEADERS})
@@ -119,7 +125,7 @@ endif()
 if(MAGNUM_BUILD_TESTS)
     # Library with graceful assert for testing
     add_library(MagnumSceneToolsTestLib ${SHARED_OR_STATIC} ${EXCLUDE_FROM_ALL_IF_TEST_TARGET}
-        #$<TARGET_OBJECTS:MagnumSceneToolsObjects>
+        $<TARGET_OBJECTS:MagnumSceneToolsObjects>
         ${MagnumSceneTools_GracefulAssert_SRCS})
     set_target_properties(MagnumSceneToolsTestLib PROPERTIES DEBUG_POSTFIX "-d")
     target_compile_definitions(MagnumSceneToolsTestLib PRIVATE

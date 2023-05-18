@@ -50,10 +50,11 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/configure.h.cmake
 file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/configure.h
     INPUT ${CMAKE_CURRENT_BINARY_DIR}/configure.h.in)
 
-corrade_add_test(SceneToolsCombineTest CombineTest.cpp LIBRARIES MagnumTrade)
-corrade_add_test(SceneToolsConvertToSingleFunc___Test ConvertToSingleFunctionObjectsTest.cpp LIBRARIES MagnumTrade)
-corrade_add_test(SceneToolsFlattenTra___HierarchyTest FlattenTransformationHierarchyTest.cpp LIBRARIES MagnumSceneToolsTestLib)
-corrade_add_test(SceneToolsOrderClusterParentsTest OrderClusterParentsTest.cpp LIBRARIES MagnumSceneToolsTestLib)
+corrade_add_test(SceneToolsCombineTest CombineTest.cpp LIBRARIES MagnumSceneToolsTestLib)
+corrade_add_test(SceneToolsCopyTest CopyTest.cpp LIBRARIES MagnumSceneTools)
+corrade_add_test(SceneToolsConvertToSingleFunc___Test ConvertToSingleFunctionObjectsTest.cpp LIBRARIES MagnumSceneToolsTestLib)
+corrade_add_test(SceneToolsFilterTest FilterTest.cpp LIBRARIES MagnumSceneToolsTestLib)
+corrade_add_test(SceneToolsHierarchyTest HierarchyTest.cpp LIBRARIES MagnumSceneToolsTestLib)
 
 corrade_add_test(SceneToolsSceneConverterImple___Test SceneConverterImplementationTest.cpp
     LIBRARIES MagnumSceneTools
@@ -106,6 +107,10 @@ if(CORRADE_TARGET_UNIX AND NOT CORRADE_PLUGINMANAGER_NO_DYNAMIC_PLUGIN_SUPPORT)
             SceneConverterTestFiles/broken-scene.gltf
             SceneConverterTestFiles/dxt1.dds
             SceneConverterTestFiles/empty.gltf
+            # Same as blue4x4.png, just named like this to have the file
+            # roundtrip on conversion
+            SceneConverterTestFiles/image-passthrough-on-failure.0.png
+            SceneConverterTestFiles/image-passthrough-on-failure.gltf
             SceneConverterTestFiles/image-dds.gltf
             SceneConverterTestFiles/images-2d.gltf
             SceneConverterTestFiles/images-2d-1x1.bin
@@ -117,14 +122,18 @@ if(CORRADE_TARGET_UNIX AND NOT CORRADE_PLUGINMANAGER_NO_DYNAMIC_PLUGIN_SUPPORT)
             SceneConverterTestFiles/info-data.txt
             SceneConverterTestFiles/info-data-ignored-output.txt
             SceneConverterTestFiles/info-converter.txt
+            SceneConverterTestFiles/info-global-plugin-options.txt
             SceneConverterTestFiles/info-image-converter.txt
             SceneConverterTestFiles/info-importer.txt
             SceneConverterTestFiles/info-importer-ignored-input-output.txt
+            SceneConverterTestFiles/info-preferred-importer-plugin.txt
             SceneConverterTestFiles/materials-3d.gltf
             SceneConverterTestFiles/materials-pbr.gltf
             SceneConverterTestFiles/materials-phong.mtl
             SceneConverterTestFiles/materials-phong.obj
             SceneConverterTestFiles/materials-separate-metalness-roughness.mtl
+            SceneConverterTestFiles/mesh-passthrough-on-failure.bin
+            SceneConverterTestFiles/mesh-passthrough-on-failure.gltf
             SceneConverterTestFiles/point.obj
             SceneConverterTestFiles/quad-duplicates-fuzzy.obj
             SceneConverterTestFiles/quad-duplicates.obj
@@ -136,13 +145,14 @@ if(CORRADE_TARGET_UNIX AND NOT CORRADE_PLUGINMANAGER_NO_DYNAMIC_PLUGIN_SUPPORT)
             SceneConverterTestFiles/quad-normals-texcoords.obj
             SceneConverterTestFiles/quad-strip.bin
             SceneConverterTestFiles/quad-strip.gltf
-            SceneConverterTestFiles/quad.bin
+            SceneConverterTestFiles/quad.bin # generated from quad.obj
             SceneConverterTestFiles/quad.gltf
             SceneConverterTestFiles/quad.obj
             SceneConverterTestFiles/quad.ply
             SceneConverterTestFiles/red2x2.png
             # magnum-imageconverter --layers red2x2.png --array red2x2x1.ktx2 -c writerName=
             SceneConverterTestFiles/red2x2x1.ktx2
+            SceneConverterTestFiles/rgba.png # copied from PngImporter tests
             SceneConverterTestFiles/two-quads-duplicates-fuzzy.bin
             SceneConverterTestFiles/two-quads-duplicates-fuzzy.gltf
             SceneConverterTestFiles/two-quads-duplicates.bin

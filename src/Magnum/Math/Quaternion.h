@@ -30,10 +30,10 @@
  * @brief Class @ref Magnum::Math::Quaternion, function @ref Magnum::Math::dot(), @ref Magnum::Math::angle(), @ref Magnum::Math::lerp(), @ref Magnum::Math::slerp()
  */
 
-#include <Corrade/Utility/Assert.h>
 #ifndef CORRADE_NO_DEBUG
 #include <Corrade/Utility/Debug.h>
 #endif
+#include <Corrade/Utility/DebugAssert.h>
 #include <Corrade/Utility/StlMath.h>
 
 #include "Magnum/Math/Matrix.h"
@@ -73,7 +73,7 @@ passed to @f$ \arccos @f$.
     @ref angle(const Vector<size, FloatingPoint>&, const Vector<size, FloatingPoint>&)
  */
 template<class T> inline Rad<T> angle(const Quaternion<T>& normalizedA, const Quaternion<T>& normalizedB) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::angle(): quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
     return Rad<T>{std::acos(clamp(dot(normalizedA, normalizedB), T(-1), T(1)))};
 }
@@ -100,7 +100,7 @@ alternative.
     @ref lerp(const CubicHermiteQuaternion<T>&, const CubicHermiteQuaternion<T>&, T)
 */
 template<class T> inline Quaternion<T> lerp(const Quaternion<T>& normalizedA, const Quaternion<T>& normalizedB, T t) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::lerp(): quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
     return ((T(1) - t)*normalizedA + t*normalizedB).normalized();
 }
@@ -169,7 +169,7 @@ alternative.
     @ref slerp(const CubicHermiteQuaternion<T>&, const CubicHermiteQuaternion<T>&, T)
 */
 template<class T> inline Quaternion<T> slerp(const Quaternion<T>& normalizedA, const Quaternion<T>& normalizedB, T t) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::slerp(): quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
     const T cosHalfAngle = dot(normalizedA, normalizedB);
 
@@ -240,7 +240,7 @@ Otherwise, the interpolation is performed as: @f[
     @ref sclerpShortestPath()
 */
 template<class T> inline Quaternion<T> slerpShortestPath(const Quaternion<T>& normalizedA, const Quaternion<T>& normalizedB, T t) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::slerpShortestPath(): quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
     const T cosHalfAngle = dot(normalizedA, normalizedB);
 
@@ -289,6 +289,25 @@ template<class T> class Quaternion {
          *      @ref Vector3::zAxis(), @ref Vector::isNormalized()
          */
         static Quaternion<T> rotation(Rad<T> angle, const Vector3<T>& normalizedAxis);
+
+        /**
+         * @brief Reflection quaternion
+         * @param normal        Normal of the plane through which to reflect
+         * @m_since_latest
+         *
+         * Expects that the normal is normalized. @f[
+         *      q = [\boldsymbol n, 0]
+         * @f]
+         * Note that reflection quaternions behave differently from usual
+         * rotations, in particular they *can't* be concatenated together with
+         * usual quaternion multiplication, @ref toMatrix() will *not* create a
+         * reflection matrix out of them and @ref transformVector() will *not*
+         * do a proper reflection either, you have to use @ref reflectVector()
+         * instead. See its documentation for more information.
+         * @see @ref Matrix4::reflection(), @ref Vector::isNormalized(),
+         *      @ref reflect()
+         */
+        static Quaternion<T> reflection(const Vector3<T>& normal);
 
         /**
          * @brief Create a quaternion from a rotation matrix
@@ -659,8 +678,11 @@ template<class T> class Quaternion {
          * quaternions. @f[
          *      v' = qvq^{-1} = q [\boldsymbol v, 0] q^{-1}
          * @f]
+         * Note that this function will not give the correct result for
+         * quaternions created with @ref reflection(), for those use
+         * @ref reflectVector() instead.
          * @see @ref Quaternion(const Vector3<T>&), @ref vector(),
-         *      @ref Matrix4::transformVector(),
+         *      @ref reflectVector(), @ref Matrix4::transformVector(),
          *      @ref DualQuaternion::transformPoint(),
          *      @ref Complex::transformVector()
          */
@@ -688,6 +710,31 @@ template<class T> class Quaternion {
          *      @ref Complex::transformVector()
          */
         Vector3<T> transformVectorNormalized(const Vector3<T>& vector) const;
+
+        /**
+         * @brief Reflect a vector with a reflection quaternion
+         * @m_since_latest
+         *
+         * Compared to the usual vector transformation performed with
+         * rotation quaternions and @ref transformVector(), the reflection is
+         * done like this: @f[
+         *      v' = qvq = q [\boldsymbol v, 0] q
+         * @f]
+         * You can use @ref reflection() to create a quaternion reflecting
+         * along given normal. Note that it's **not possible to combine
+         * reflections and rotations with the usual quaternion multiplication.
+         * Assuming a (normalized) rotation quaternion @f$ r @f$, a combined
+         * rotation and reflection of vector @f$ v @f$ would look like this
+         * instead: @f[
+         *      v' = rqvqr^{-1} = rqvqr^* = rq [\boldsymbol v, 0] qr^*
+         * @f]
+         * See also [quaternion reflection at Euclidean Space](https://www.euclideanspace.com/maths/geometry/affine/reflection/quaternion/index.htm).
+         * @see @ref Quaternion(const Vector3<T>&), @ref vector(),
+         *      @ref Matrix4::transformVector()
+         */
+        Vector3<T> reflectVector(const Vector3<T>& vector) const {
+            return ((*this)*Quaternion<T>{vector}*(*this)).vector();
+        }
 
     private:
         #ifndef DOXYGEN_GENERATING_OUTPUT
@@ -781,9 +828,15 @@ template<class T> Quaternion<T> quaternionFromMatrix(const Matrix3x3<T>& m) {
 }
 
 template<class T> inline Quaternion<T> Quaternion<T>::rotation(const Rad<T> angle, const Vector3<T>& normalizedAxis) {
-    CORRADE_ASSERT(normalizedAxis.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedAxis.isNormalized(),
         "Math::Quaternion::rotation(): axis" << normalizedAxis << "is not normalized", {});
     return {normalizedAxis*std::sin(T(angle)/2), std::cos(T(angle)/2)};
+}
+
+template<class T> inline Quaternion<T> Quaternion<T>::reflection(const Vector3<T>& normal) {
+    CORRADE_DEBUG_ASSERT(normal.isNormalized(),
+        "Math::Quaternion::reflection(): normal" << normal << "is not normalized", {});
+    return {normal, 0.0f};
 }
 
 template<class T> inline Quaternion<T> Quaternion<T>::fromMatrix(const Matrix3x3<T>& matrix) {
@@ -796,19 +849,19 @@ template<class T> inline Quaternion<T> Quaternion<T>::fromMatrix(const Matrix3x3
        unrepresentable, the fuzzy comparison should be 1 ± 3ε. This is similar
        to Vector::isNormalized(), which compares the dot product (length
        squared) to 1 ± 2ε. */
-    CORRADE_ASSERT(std::abs(matrix.determinant() - T(1)) < T(3)*TypeTraits<T>::epsilon(),
+    CORRADE_DEBUG_ASSERT(std::abs(matrix.determinant() - T(1)) < T(3)*TypeTraits<T>::epsilon(),
         "Math::Quaternion::fromMatrix(): the matrix is not a rotation:" << Corrade::Utility::Debug::newline << matrix, {});
     return Implementation::quaternionFromMatrix(matrix);
 }
 
 template<class T> inline Rad<T> Quaternion<T>::angle() const {
-    CORRADE_ASSERT(isNormalized(),
+    CORRADE_DEBUG_ASSERT(isNormalized(),
         "Math::Quaternion::angle():" << *this << "is not normalized", {});
     return Rad<T>(T(2)*std::acos(_scalar));
 }
 
 template<class T> inline Vector3<T> Quaternion<T>::axis() const {
-    CORRADE_ASSERT(isNormalized(),
+    CORRADE_DEBUG_ASSERT(isNormalized(),
         "Math::Quaternion::axis():" << *this << "is not normalized", {});
     return _vector/std::sqrt(1-pow2(_scalar));
 }
@@ -830,7 +883,7 @@ template<class T> Matrix3x3<T> Quaternion<T>::toMatrix() const {
 /* Algorithm from:
    https://github.com/mrdoob/three.js/blob/6892dd0aba1411d35c5e2b44dc6ff280b24d6aa2/src/math/Euler.js#L197 */
 template<class T> Vector3<Rad<T>> Quaternion<T>::toEuler() const {
-    CORRADE_ASSERT(isNormalized(),
+    CORRADE_DEBUG_ASSERT(isNormalized(),
         "Math::Quaternion::toEuler():" << *this << "is not normalized", {});
 
     Vector3<Rad<T>> euler{Magnum::NoInit};
@@ -864,13 +917,13 @@ template<class T> inline Quaternion<T> Quaternion<T>::operator*(const Quaternion
 }
 
 template<class T> inline Quaternion<T> Quaternion<T>::invertedNormalized() const {
-    CORRADE_ASSERT(isNormalized(),
+    CORRADE_DEBUG_ASSERT(isNormalized(),
         "Math::Quaternion::invertedNormalized():" << *this << "is not normalized", {});
     return conjugated();
 }
 
 template<class T> inline Vector3<T> Quaternion<T>::transformVectorNormalized(const Vector3<T>& vector) const {
-    CORRADE_ASSERT(isNormalized(),
+    CORRADE_DEBUG_ASSERT(isNormalized(),
         "Math::Quaternion::transformVectorNormalized():" << *this << "is not normalized", {});
     const Vector3<T> t = T(2)*Math::cross(_vector, vector);
     return vector + _scalar*t + Math::cross(_vector, t);

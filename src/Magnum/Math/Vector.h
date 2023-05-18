@@ -30,10 +30,10 @@
  */
 
 #include <utility>
-#include <Corrade/Utility/Assert.h>
 #ifndef CORRADE_NO_DEBUG
 #include <Corrade/Utility/Debug.h>
 #endif
+#include <Corrade/Utility/DebugAssert.h>
 #include <Corrade/Utility/StlMath.h>
 
 #include "Magnum/visibility.h"
@@ -130,7 +130,7 @@ Rad<FloatingPoint>
 typename std::enable_if<std::is_floating_point<FloatingPoint>::value, Rad<FloatingPoint>>::type
 #endif
 angle(const Vector<size, FloatingPoint>& normalizedA, const Vector<size, FloatingPoint>& normalizedB) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::angle(): vectors" << normalizedA << "and" << normalizedB << "are not normalized", {});
     return Rad<FloatingPoint>(std::acos(clamp(dot(normalizedA, normalizedB), FloatingPoint(-1), FloatingPoint(1))));
 }
@@ -344,7 +344,7 @@ template<std::size_t size, class T> class Vector {
          * Enabled only for signed types. @f[
          *      \boldsymbol b_i = -\boldsymbol a_i
          * @f]
-         * @see @ref Vector2::perpendicular()
+         * @see @ref flipped(), @ref Vector2::perpendicular()
          */
         #ifdef DOXYGEN_GENERATING_OUTPUT
         Vector<size, T>
@@ -634,8 +634,10 @@ template<std::size_t size, class T> class Vector {
         /**
          * @brief Flipped vector
          *
-         * Returns the vector with components in reverse order.
-         * @see @ref RectangularMatrix::flippedCols(),
+         * Returns the vector with components in reverse order. If you want to
+         * flip the vector *direction* instead, negate it.
+         * @see @ref operator-() const,
+         *      @ref RectangularMatrix::flippedCols(),
          *      @ref RectangularMatrix::flippedRows()
          */
         constexpr Vector<size, T> flipped() const {
@@ -1510,7 +1512,7 @@ inline Vector<size, T>
 template<class U> inline typename std::enable_if<std::is_floating_point<U>::value, Vector<size, T>>::type
 #endif
 Vector<size, T>::projectedOntoNormalized(const Vector<size, T>& line) const {
-    CORRADE_ASSERT(line.isNormalized(),
+    CORRADE_DEBUG_ASSERT(line.isNormalized(),
         "Math::Vector::projectedOntoNormalized(): line" << line << "is not normalized", {});
     return line*Math::dot(*this, line);
 }

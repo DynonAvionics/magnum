@@ -3767,18 +3767,18 @@ void AbstractImporterTest::sceneFieldName() {
         void doClose() override {}
 
         SceneField doSceneFieldForName(Containers::StringView name) override {
-            if(name == "OctreeCell") return sceneFieldCustom(100037);
+            if(name == "octreeCell") return sceneFieldCustom(100037);
             return SceneField{};
         }
 
-        Containers::String doSceneFieldName(UnsignedInt id) override {
-            if(id == 100037) return "OctreeCell";
+        Containers::String doSceneFieldName(SceneField id) override {
+            if(id == sceneFieldCustom(100037)) return "octreeCell";
             return "";
         }
     } importer;
 
-    CORRADE_COMPARE(importer.sceneFieldForName("OctreeCell"), sceneFieldCustom(100037));
-    CORRADE_COMPARE(importer.sceneFieldName(sceneFieldCustom(100037)), "OctreeCell");
+    CORRADE_COMPARE(importer.sceneFieldForName("octreeCell"), sceneFieldCustom(100037));
+    CORRADE_COMPARE(importer.sceneFieldName(sceneFieldCustom(100037)), "octreeCell");
 }
 
 void AbstractImporterTest::sceneFieldNameNotImplemented() {
@@ -3822,7 +3822,7 @@ void AbstractImporterTest::sceneFieldNameCustomDeleter() {
         bool doIsOpened() const override { return true; }
         void doClose() override {}
 
-        Containers::String doSceneFieldName(UnsignedInt) override {
+        Containers::String doSceneFieldName(SceneField) override {
             return Containers::String{"a", 1, [](char*, std::size_t) {}};
         }
     } importer;
@@ -4098,8 +4098,8 @@ void AbstractImporterTest::animationTrackTargetName() {
             return AnimationTrackTarget{};
         }
 
-        Containers::String doAnimationTrackTargetName(UnsignedShort id) override {
-            if(id == 37) return "visibility";
+        Containers::String doAnimationTrackTargetName(AnimationTrackTarget id) override {
+            if(id == animationTrackTargetCustom(37)) return "visibility";
             return "";
         }
     } importer;
@@ -4149,7 +4149,7 @@ void AbstractImporterTest::animationTrackTargetNameCustomDeleter() {
         bool doIsOpened() const override { return true; }
         void doClose() override {}
 
-        Containers::String doAnimationTrackTargetName(UnsignedShort) override {
+        Containers::String doAnimationTrackTargetName(AnimationTrackTarget) override {
             return Containers::String{"a", 1, [](char*, std::size_t) {}};
         }
     } importer;
@@ -5911,8 +5911,8 @@ void AbstractImporterTest::meshAttributeName() {
             return MeshAttribute{};
         }
 
-        Containers::String doMeshAttributeName(UnsignedShort id) override {
-            if(id == 37) return "SMOOTH_GROUP_ID";
+        Containers::String doMeshAttributeName(MeshAttribute id) override {
+            if(id == meshAttributeCustom(37)) return "SMOOTH_GROUP_ID";
             return "";
         }
     } importer;
@@ -5962,7 +5962,7 @@ void AbstractImporterTest::meshAttributeNameCustomDeleter() {
         bool doIsOpened() const override { return true; }
         void doClose() override {}
 
-        Containers::String doMeshAttributeName(UnsignedShort) override {
+        Containers::String doMeshAttributeName(MeshAttribute) override {
             return Containers::String{"a", 1, [](char*, std::size_t) {}};
         }
     } importer;

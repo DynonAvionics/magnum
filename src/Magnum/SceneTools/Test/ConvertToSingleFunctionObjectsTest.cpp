@@ -29,6 +29,7 @@
 
 #include "Magnum/Math/Complex.h"
 #include "Magnum/Math/Vector2.h"
+#include "Magnum/SceneTools/Combine.h"
 #include "Magnum/SceneTools/Implementation/convertToSingleFunctionObjects.h"
 
 namespace Magnum { namespace SceneTools { namespace Test { namespace {
@@ -70,7 +71,7 @@ void ConvertToSingleFunctionObjectsTest::test() {
     auto&& data = TestData[testCaseInstanceId()];
     setTestCaseDescription(data.name);
 
-    /* Haha now I can use sceneCombine() to conveniently prepare the initial
+    /* Haha now I can use combineFields() to conveniently prepare the initial
        state here, without having to mess with an ArrayTuple */
 
     const UnsignedShort parentMappingData[]{2, 15, 21, 22, 23};
@@ -114,16 +115,37 @@ void ConvertToSingleFunctionObjectsTest::test() {
        changed, it should not retain the ImplicitMapping flag. */
     const Byte foo3FieldData[]{-1, -2, 7, 2};
 
-    Trade::SceneData original = Implementation::combine(Trade::SceneMappingType::UnsignedShort, data.originalObjectCount, Containers::arrayView({
-        Trade::SceneFieldData{Trade::SceneField::Parent, Containers::arrayView(parentMappingData), Containers::arrayView(parentFieldData), data.parentFieldFlagsInput},
-        Trade::SceneFieldData{Trade::SceneField::Mesh, Containers::arrayView(meshMappingData), Containers::StridedArrayView1D<const UnsignedInt>{meshMaterialFieldData, &meshMaterialFieldData[0].first(), Containers::arraySize(meshMaterialFieldData), sizeof(meshMaterialFieldData[0])}},
-        Trade::SceneFieldData{Trade::SceneField::MeshMaterial, Containers::arrayView(meshMappingData), Containers::StridedArrayView1D<const Int>{meshMaterialFieldData, &meshMaterialFieldData[0].second(), Containers::arraySize(meshMaterialFieldData), sizeof(meshMaterialFieldData[0])}},
-        Trade::SceneFieldData{Trade::SceneField::Camera, Containers::arrayView(cameraMappingData), Containers::arrayView(cameraFieldData)},
-        Trade::SceneFieldData{Trade::SceneField::Light, Containers::arrayView(lightMappingData), Containers::arrayView(lightFieldData), Trade::SceneFieldFlag::ImplicitMapping},
-        Trade::SceneFieldData{Trade::sceneFieldCustom(15), Containers::arrayView(fooMappingData), Containers::arrayView(fooFieldData), Trade::SceneFieldFlag::ImplicitMapping},
-        Trade::SceneFieldData{Trade::sceneFieldCustom(16),  Containers::arrayView(foo2MappingData), Containers::arrayView(foo2FieldData), Trade::SceneFieldFlag::ImplicitMapping},
-        Trade::SceneFieldData{Trade::sceneFieldCustom(17),  Containers::arrayView(fooMappingData), Containers::arrayView(foo3FieldData), Trade::SceneFieldFlag::ImplicitMapping}
-    }));
+    Trade::SceneData original = combineFields(Trade::SceneMappingType::UnsignedShort, data.originalObjectCount, {
+        Trade::SceneFieldData{Trade::SceneField::Parent,
+            Containers::arrayView(parentMappingData),
+            Containers::arrayView(parentFieldData),
+            data.parentFieldFlagsInput},
+        Trade::SceneFieldData{Trade::SceneField::Mesh,
+            Containers::arrayView(meshMappingData),
+            Containers::stridedArrayView(meshMaterialFieldData).slice(&Containers::Pair<UnsignedInt, Int>::first)},
+        Trade::SceneFieldData{Trade::SceneField::MeshMaterial,
+            Containers::arrayView(meshMappingData),
+            Containers::stridedArrayView(meshMaterialFieldData).slice(&Containers::Pair<UnsignedInt, Int>::second)},
+        Trade::SceneFieldData{Trade::SceneField::Camera,
+            Containers::arrayView(cameraMappingData),
+            Containers::arrayView(cameraFieldData)},
+        Trade::SceneFieldData{Trade::SceneField::Light,
+            Containers::arrayView(lightMappingData),
+            Containers::arrayView(lightFieldData),
+            Trade::SceneFieldFlag::ImplicitMapping},
+        Trade::SceneFieldData{Trade::sceneFieldCustom(15),
+            Containers::arrayView(fooMappingData),
+            Containers::arrayView(fooFieldData),
+            Trade::SceneFieldFlag::ImplicitMapping},
+        Trade::SceneFieldData{Trade::sceneFieldCustom(16),
+            Containers::arrayView(foo2MappingData),
+            Containers::arrayView(foo2FieldData),
+            Trade::SceneFieldFlag::ImplicitMapping},
+        Trade::SceneFieldData{Trade::sceneFieldCustom(17),
+            Containers::arrayView(fooMappingData),
+            Containers::arrayView(foo3FieldData),
+            Trade::SceneFieldFlag::ImplicitMapping}
+    });
 
     Trade::SceneData scene = Implementation::convertToSingleFunctionObjects(original, Containers::arrayView({
         Trade::SceneField::Mesh,
@@ -306,15 +328,25 @@ void ConvertToSingleFunctionObjectsTest::fieldsToCopy() {
     const UnsignedLong fooMappingData[]{15, 23, 15, 21};
     const Int fooFieldData[]{0, 1, 2, 3, 4, 5, 6, 7};
 
-    Trade::SceneData original = Implementation::combine(Trade::SceneMappingType::UnsignedShort, 50, Containers::arrayView({
-        Trade::SceneFieldData{Trade::SceneField::Parent, Containers::arrayView(parentMappingData), Containers::arrayView(parentFieldData)},
-        Trade::SceneFieldData{Trade::SceneField::Mesh, Containers::arrayView(meshMappingData), Containers::arrayView(meshFieldData)},
-        Trade::SceneFieldData{Trade::SceneField::Skin, Containers::arrayView(skinMappingData), Containers::arrayView(skinFieldData)},
+    Trade::SceneData original = combineFields(Trade::SceneMappingType::UnsignedShort, 50, {
+        Trade::SceneFieldData{Trade::SceneField::Parent,
+            Containers::arrayView(parentMappingData),
+            Containers::arrayView(parentFieldData)},
+        Trade::SceneFieldData{Trade::SceneField::Mesh,
+            Containers::arrayView(meshMappingData),
+            Containers::arrayView(meshFieldData)},
+        Trade::SceneFieldData{Trade::SceneField::Skin,
+            Containers::arrayView(skinMappingData),
+            Containers::arrayView(skinFieldData)},
         /* Array field */
-        Trade::SceneFieldData{Trade::sceneFieldCustom(15), Containers::arrayView(fooMappingData), Containers::StridedArrayView2D<const Int>{fooFieldData, {4, 2}}},
+        Trade::SceneFieldData{Trade::sceneFieldCustom(15),
+            Containers::arrayView(fooMappingData),
+            Containers::StridedArrayView2D<const Int>{fooFieldData, {4, 2}}},
         /* Just to disambiguate between 2D and 3D */
-        Trade::SceneFieldData{Trade::SceneField::Transformation, Trade::SceneMappingType::UnsignedShort, nullptr, Trade::SceneFieldType::Matrix4x4, nullptr}
-    }));
+        Trade::SceneFieldData{Trade::SceneField::Transformation,
+            Trade::SceneMappingType::UnsignedShort, nullptr,
+            Trade::SceneFieldType::Matrix4x4, nullptr}
+    });
 
     Trade::SceneData scene = Implementation::convertToSingleFunctionObjects(original,
         Containers::arrayView({

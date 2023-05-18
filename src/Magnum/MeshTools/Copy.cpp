@@ -23,11 +23,16 @@
     DEALINGS IN THE SOFTWARE.
 */
 
-#include "Reference.h"
+#include "Copy.h"
 
 #include <Corrade/Utility/Algorithms.h>
 
 #include "Magnum/Trade/MeshData.h"
+
+#ifdef MAGNUM_BUILD_DEPRECATED
+#define _MAGNUM_NO_DEPRECATED_MESHTOOLS_REFERENCE
+#include "Magnum/MeshTools/Reference.h"
+#endif
 
 namespace Magnum { namespace MeshTools {
 
@@ -75,18 +80,16 @@ Trade::MeshData mutableReference(Trade::MeshData& mesh) {
         mesh.vertexCount()};
 }
 
-Trade::MeshData owned(const Trade::MeshData& mesh) {
-    return owned(reference(mesh));
+Trade::MeshData copy(const Trade::MeshData& mesh) {
+    return copy(reference(mesh));
 }
 
-Trade::MeshData owned(Trade::MeshData&& mesh) {
-    /** @todo copy only the actually used range instead of the whole thing? */
-
-    /* If index data are already owned, move them to the output. This works
-       without any extra effort also for non-indexed meshes. */
+Trade::MeshData copy(Trade::MeshData&& mesh) {
+    /* Transfer index data if they're owned and mutable. This works without any
+       extra effort also for non-indexed meshes. */
     Containers::Array<char> indexData;
     Trade::MeshIndexData indices;
-    if(mesh.indexDataFlags() & Trade::DataFlag::Owned) {
+    if(mesh.indexDataFlags() >= (Trade::DataFlag::Owned|Trade::DataFlag::Mutable)) {
         indices = Trade::MeshIndexData{mesh.indices()};
         indexData = mesh.releaseIndexData();
 
@@ -132,18 +135,30 @@ Trade::MeshData owned(Trade::MeshData&& mesh) {
 
     /* Otherwise we have to allocate a new one and re-route the attributes to
        a potentially different vertex array */
+    /** @todo could theoretically also just modify the array in-place if it has
+        a default deleter, but would need to pay attention to not copy items
+        to themselves and such */
     } else {
-        attributeData = Containers::Array<Trade::MeshAttributeData>{originalAttributeData.size()};
+        /* Using DefaultInit so the array has a default deleter and isn't
+           problematic to use in plugins */
+        attributeData = Containers::Array<Trade::MeshAttributeData>{DefaultInit, originalAttributeData.size()};
         for(std::size_t i = 0; i != originalAttributeData.size(); ++i) {
-            attributeData[i] = Trade::MeshAttributeData{
-                originalAttributeData[i].name(),
-                originalAttributeData[i].format(),
+            const Trade::MeshAttributeData& originalAttribute = originalAttributeData[i];
+
+            /* If the attribute is offset-only, copy it directly, yay! */
+            if(originalAttribute.isOffsetOnly())
+                attributeData[i] = originalAttribute;
+
+            /* Otherwise it's kinda verbose */
+            else attributeData[i] = Trade::MeshAttributeData{
+                originalAttribute.name(),
+                originalAttribute.format(),
                 Containers::StridedArrayView1D<const void>{
                     vertexData,
-                    vertexData.data() + originalAttributeData[i].offset(originalVertexData),
+                    vertexData.data() + originalAttribute.offset(originalVertexData),
                     vertexCount,
-                    originalAttributeData[i].stride()},
-                originalAttributeData[i].arraySize()};
+                    originalAttribute.stride()},
+                originalAttribute.arraySize()};
         }
     }
 
@@ -152,5 +167,15 @@ Trade::MeshData owned(Trade::MeshData&& mesh) {
         std::move(vertexData), std::move(attributeData),
         vertexCount};
 }
+
+#ifdef MAGNUM_BUILD_DEPRECATED
+Trade::MeshData owned(const Trade::MeshData& mesh) {
+    return copy(mesh);
+}
+
+Trade::MeshData owned(Trade::MeshData&& mesh) {
+    return copy(std::move(mesh));
+}
+#endif
 
 }}

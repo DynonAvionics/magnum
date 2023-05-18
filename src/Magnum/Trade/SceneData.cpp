@@ -44,6 +44,7 @@
 #include "Magnum/Math/DualQuaternion.h"
 #include "Magnum/Math/PackingBatch.h"
 #include "Magnum/Trade/Implementation/arrayUtilities.h"
+#include "Magnum/Trade/Implementation/checkSharedSceneFieldMapping.h"
 
 #ifdef MAGNUM_BUILD_DEPRECATED
 #include <vector>
@@ -633,7 +634,8 @@ SceneFieldData::SceneFieldData(const SceneField name, const SceneMappingType map
            sparse), and even then it'd probably fail due to the two pointers
            being two unrelated pieces of memory */
         stringData - static_cast<const char*>(fieldData.data())},
-    _fieldData{fieldData.data()} {
+    _fieldData{fieldData.data()}
+{
     CORRADE_ASSERT(mappingData.size() == fieldData.size(),
         "Trade::SceneFieldData: expected" << name << "mapping and field view to have the same size but got" << mappingData.size() << "and" << fieldData.size(), );
     CORRADE_ASSERT(Implementation::isSceneFieldTypeCompatibleWithField(name, fieldType),
@@ -646,12 +648,14 @@ SceneFieldData::SceneFieldData(const SceneField name, const SceneMappingType map
         "Trade::SceneFieldData: expected mapping view stride to fit into 16 bits but got" << mappingData.stride(), );
     CORRADE_ASSERT(fieldData.stride() >= -32768 && fieldData.stride() <= 32767,
         "Trade::SceneFieldData: expected field view stride to fit into 16 bits but got" << fieldData.stride(), );
+    #ifndef CORRADE_TARGET_32BIT
+    /* 47 because the distance is signed */
+    CORRADE_ASSERT(Utility::abs(stringData - static_cast<const char*>(fieldData.data())) < (1ll << 47),
+        "Trade::SceneFieldData: (signed) distance between string data and field data expected to fit into 48 bits but got" << static_cast<const void*>(stringData) << "and" << fieldData.data(), );
+    #endif
 }
 
 SceneFieldData::SceneFieldData(const SceneField name, const Containers::StridedArrayView2D<const char>& mappingData, const char* const stringData, const SceneFieldType fieldType, const Containers::StridedArrayView2D<const char>& fieldData, const SceneFieldFlags flags) noexcept: SceneFieldData{name, {}, Containers::StridedArrayView1D<const void>{{mappingData.data(), ~std::size_t{}}, mappingData.size()[0], mappingData.stride()[0]}, stringData, fieldType, Containers::StridedArrayView1D<const void>{{fieldData.data(), ~std::size_t{}}, fieldData.size()[0], fieldData.stride()[0]}, flags} {
-    /* Yes, this calls into a constexpr function defined in the header --
-       because I feel that makes more sense than duplicating the full assert
-       logic */
     CORRADE_ASSERT(fieldData.isEmpty()[0] || fieldData.size()[1] == sceneFieldTypeSize(fieldType),
         "Trade::SceneFieldData: second field view dimension size" << fieldData.size()[1] << "doesn't match" << fieldType, );
 
@@ -795,8 +799,6 @@ SceneData::SceneData(const SceneMappingType mappingType, const UnsignedLong mapp
     UnsignedInt rotationField = ~UnsignedInt{};
     UnsignedInt scalingField = ~UnsignedInt{};
     #ifndef CORRADE_NO_ASSERT
-    UnsignedInt meshField = ~UnsignedInt{};
-    UnsignedInt meshMaterialField = ~UnsignedInt{};
     UnsignedInt skinField = ~UnsignedInt{};
     #endif
     for(std::size_t i = 0; i != _fields.size(); ++i) {
@@ -920,45 +922,17 @@ SceneData::SceneData(const SceneMappingType mappingType, const UnsignedLong mapp
             scalingField = i;
         }
         #ifndef CORRADE_NO_ASSERT
-        else if(field._name == SceneField::Mesh) {
-            meshField = i;
-        } else if(field._name == SceneField::MeshMaterial) {
-            meshMaterialField = i;
-        } else if(field._name == SceneField::Skin) {
+        else if(field._name == SceneField::Skin) {
             skinField = i;
         }
         #endif
     }
 
     #ifndef CORRADE_NO_ASSERT
-    /* Check that certain fields share the same object mapping. Printing as if
-       all would be pointers (and not offset-only), it's not worth the extra
-       effort just for an assert message. Also, compared to above, where
-       "begin" was always zero, here we're always comparing four values, so the
-       message for offset-only wouldn't be simpler either. */
-    const auto checkFieldMappingDataMatch = [](const SceneFieldData& a, const SceneFieldData& b) {
-        const std::size_t mappingTypeSize = sceneMappingTypeSize(a.mappingType());
-        const void* const aBegin = a._mappingData.pointer;
-        const void* const bBegin = b._mappingData.pointer;
-        const void* const aEnd = static_cast<const char*>(a._mappingData.pointer) + a._size*mappingTypeSize;
-        const void* const bEnd = static_cast<const char*>(b._mappingData.pointer) + b._size*mappingTypeSize;
-        CORRADE_ASSERT(aBegin == bBegin && aEnd == bEnd,
-            "Trade::SceneData:" << b._name << "mapping data [" << Debug::nospace << bBegin << Debug::nospace << ":" << Debug::nospace << bEnd << Debug::nospace << "] is different from" << a._name << "mapping data [" << Debug::nospace << aBegin << Debug::nospace << ":" << Debug::nospace << aEnd << Debug::nospace << "]", );
-    };
-
-    /* All present TRS fields should share the same object mapping */
-    if(translationField != ~UnsignedInt{}) {
-        if(rotationField != ~UnsignedInt{})
-            checkFieldMappingDataMatch(_fields[translationField], _fields[rotationField]);
-        if(scalingField != ~UnsignedInt{})
-            checkFieldMappingDataMatch(_fields[translationField], _fields[scalingField]);
-    }
-    if(rotationField != ~UnsignedInt{} && scalingField != ~UnsignedInt{})
-        checkFieldMappingDataMatch(_fields[rotationField], _fields[scalingField]);
-
-    /* Mesh and materials also */
-    if(meshField != ~UnsignedInt{} && meshMaterialField != ~UnsignedInt{})
-        checkFieldMappingDataMatch(_fields[meshField], _fields[meshMaterialField]);
+    /* Check that certain fields share the same object mapping, i.e. the same
+       begin, size and stride. Cases where one of the two is offset-only and
+       the other not are allowed if both have the same absolute begin pointer. */
+    Implementation::checkSharedSceneFieldMapping("Trade::SceneData:", Implementation::findSharedSceneFields(_fields), _data, _fields);
     #endif
 
     /* Decide about dimensionality based on transformation type, if present */
@@ -2930,7 +2904,6 @@ Containers::Array<SceneFieldData> SceneData::releaseFieldData() {
 }
 
 Containers::Array<char> SceneData::releaseData() {
-    _fields = {};
     Containers::Array<char> out = std::move(_data);
     _data = {};
     return out;

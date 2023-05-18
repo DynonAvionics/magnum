@@ -1184,7 +1184,7 @@ class MAGNUM_TRADE_EXPORT AbstractSceneConverter: public PluginManager::Abstract
          * support custom scene fields or doesn't support naming them, the call
          * is ignored.
          * @see @ref isConverting(), @ref features(), @ref isSceneFieldCustom(),
-         *      @ref setMeshAttributeName()
+         *      @ref setAnimationTrackTargetName(), @ref setMeshAttributeName()
          */
         void setSceneFieldName(SceneField field, Containers::StringView name);
 
@@ -1241,7 +1241,8 @@ class MAGNUM_TRADE_EXPORT AbstractSceneConverter: public PluginManager::Abstract
          *
          * If the converter doesn't support animation naming, @p name is
          * ignored.
-         * @see @ref isConverting(), @ref features()
+         * @see @ref isConverting(), @ref features(),
+         *      @ref setAnimationTrackTargetName()
          */
         #ifdef DOXYGEN_GENERATING_OUTPUT
         Containers::Optional<UnsignedInt> add(const AnimationData& animation, Containers::StringView name = {});
@@ -1249,6 +1250,22 @@ class MAGNUM_TRADE_EXPORT AbstractSceneConverter: public PluginManager::Abstract
         Containers::Optional<UnsignedInt> add(const AnimationData& animation, Containers::StringView name);
         Containers::Optional<UnsignedInt> add(const AnimationData& animation);
         #endif
+
+        /**
+         * @brief Set name of a custom animation track target
+         * @m_since_latest
+         *
+         * Expects that a conversion is currently in progress,
+         * @ref SceneConverterFeature::AddAnimations is supported and
+         * @p target is a custom target. The target name will get used only for
+         * animation data added after this function has been called. If the
+         * converter doesn't support custom animation track target or doesn't
+         * support naming them, the call is ignored.
+         * @see @ref isConverting(), @ref features(),
+         *      @ref isAnimationTrackTargetCustom(), @ref setSceneFieldName(),
+         *      @ref setMeshAttributeName()
+         */
+        void setAnimationTrackTargetName(AnimationTrackTarget target, Containers::StringView name);
 
         /**
          * @brief Count of added lights
@@ -1485,12 +1502,13 @@ class MAGNUM_TRADE_EXPORT AbstractSceneConverter: public PluginManager::Abstract
          *
          * Expects that a conversion is currently in progress,
          * @ref SceneConverterFeature::AddMeshes is supported and @p attribute
-         * is a custom attribute. The attribute name will get used only mesh
-         * data added after this function has been called. If the converter
-         * doesn't support custom mesh attributes or doesn't support naming
-         * them, the call is ignored.
+         * is a custom attribute. The attribute name will get used only for
+         * mesh data added after this function has been called. If the
+         * converter doesn't support custom mesh attributes or doesn't support
+         * naming them, the call is ignored.
          * @see @ref isConverting(), @ref features(),
-         *      @ref isMeshAttributeCustom(), @ref setSceneFieldName()
+         *      @ref isMeshAttributeCustom(), @ref setSceneFieldName(),
+         *      @ref setAnimationTrackTargetName()
          */
         void setMeshAttributeName(MeshAttribute attribute, Containers::StringView name);
 
@@ -2197,11 +2215,9 @@ class MAGNUM_TRADE_EXPORT AbstractSceneConverter: public PluginManager::Abstract
          * @brief Implementation for @ref setSceneFieldName()
          * @m_since_latest
          *
-         * Receives the custom ID extracted via
-         * @ref sceneFieldCustom(SceneField). Default implementation does
-         * nothing.
+         * The @p field is always custom. Default implementation does nothing.
          */
-        virtual void doSetSceneFieldName(UnsignedInt field, Containers::StringView name);
+        virtual void doSetSceneFieldName(SceneField field, Containers::StringView name);
 
         /**
          * @brief Implementation for @ref setObjectName()
@@ -2227,6 +2243,14 @@ class MAGNUM_TRADE_EXPORT AbstractSceneConverter: public PluginManager::Abstract
          * function is called.
          */
         virtual bool doAdd(UnsignedInt id, const AnimationData& animation, Containers::StringView name);
+
+        /**
+         * @brief Implementation for @ref setAnimationTrackTargetName()
+         * @m_since_latest
+         *
+         * The @p target is always custom. Default implementation does nothing.
+         */
+        virtual void doSetAnimationTrackTargetName(AnimationTrackTarget target, Containers::StringView name);
 
         /**
          * @brief Implementation for @ref add(const LightData&, Containers::StringView)
@@ -2308,11 +2332,10 @@ class MAGNUM_TRADE_EXPORT AbstractSceneConverter: public PluginManager::Abstract
          * @brief Implementation for @ref setMeshAttributeName()
          * @m_since_latest
          *
-         * Receives the custom ID extracted via
-         * @ref meshAttributeCustom(MeshAttribute). Default implementation does
+         * The @p attribute is always custom. Default implementation does
          * nothing.
          */
-        virtual void doSetMeshAttributeName(UnsignedShort attribute, Containers::StringView name);
+        virtual void doSetMeshAttributeName(MeshAttribute attribute, Containers::StringView name);
 
         /**
          * @brief Implementation for @ref add(const MaterialData&, Containers::StringView)
@@ -2441,7 +2464,7 @@ updated interface string.
 */
 /* Silly indentation to make the string appear in pluginInterface() docs */
 #define MAGNUM_TRADE_ABSTRACTSCENECONVERTER_PLUGIN_INTERFACE /* [interface] */ \
-"cz.mosra.magnum.Trade.AbstractSceneConverter/0.2.1"
+"cz.mosra.magnum.Trade.AbstractSceneConverter/0.2.2"
 /* [interface] */
 
 }}
